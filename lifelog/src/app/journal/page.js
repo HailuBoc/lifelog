@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 const STORAGE_KEY = "lifelog:data:v1";
-const API_BASE = "http://localhost:5000/api/journal";
+const API_BASE = "https://lifelog-7qzu.onrender.com/api/journal";
 const USER_ID = "demo"; // change if you have real auth
 
 /* small safe localStorage wrapper with in-memory fallback */

@@ -20,7 +20,7 @@ export default function HomePage() {
   const [newHabit, setNewHabit] = useState("");
 
   const USER_ID = "demo"; // Replace with auth/user ID if implemented
-  const API_BASE = "http://localhost:5000/api/lifelog";
+  const API_BASE = "https://lifelog-7qzu.onrender.com/api/lifelog";
 
   const completedHabitsCount = data.habits.filter((h) => h.completed).length;
 
@@ -358,7 +358,7 @@ export default function HomePage() {
 
                     try {
                       const res = await fetch(
-                        `http://localhost:5000/api/lifelog/${USER_ID}/habit`,
+                        `https://lifelog-7qzu.onrender.com/api/lifelog/${USER_ID}/habit`,
                         {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
@@ -424,7 +424,7 @@ export default function HomePage() {
                           onClick={async () => {
                             try {
                               const res = await fetch(
-                                `http://localhost:5000/api/lifelog/${USER_ID}/habit/${h._id}/toggle`,
+                                `https://lifelog-7qzu.onrender.com/api/lifelog/${USER_ID}/habit/${h._id}/toggle`,
                                 { method: "PUT" }
                               );
                               const updated = await res.json();
@@ -452,7 +452,7 @@ export default function HomePage() {
                           onClick={async () => {
                             try {
                               await fetch(
-                                `http://localhost:5000/api/lifelog/${USER_ID}/habit/${h._id}`,
+                                `https://lifelog-7qzu.onrender.com/api/lifelog/${USER_ID}/habit/${h._id}`,
                                 { method: "DELETE" }
                               );
                               setData((prev) => ({

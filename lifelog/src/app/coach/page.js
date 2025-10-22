@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 const STORAGE_KEY = "lifelog:data:v1";
 
+// Create a simple storage helper
 function createStorage(key) {
   let memory = null;
   const hasLocal =
@@ -36,18 +37,21 @@ const defaultMessages = [
     id: 1,
     from: "ai",
     text: "Hey! How are you feeling today?",
-    date: "2024-01-01T00:00:00.000Z", // fixed date to avoid SSR mismatch
+    date: "2024-01-01T00:00:00.000Z",
   },
 ];
 
 export default function CoachPage() {
-  const [messages, setMessages] = useState([]); // start empty to avoid SSR mismatch
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const endRef = useRef(null);
   const liveRef = useRef(null);
 
-  // Load from localStorage client-side only
+  // ✅ Use environment variable for backend URL
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"; // fallback for local dev
+
+  // Load from localStorage on mount
   useEffect(() => {
     const saved = store.get();
     if (saved?.messages?.length) {
@@ -57,7 +61,7 @@ export default function CoachPage() {
     }
   }, []);
 
-  // Persist messages & scroll
+  // Persist messages and scroll
   useEffect(() => {
     store.set({ messages });
     if (endRef.current) {
@@ -78,11 +82,13 @@ export default function CoachPage() {
     setSending(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/coach", {
+      // ✅ Call the deployed backend dynamically
+      const response = await fetch(`${API_URL}/api/coach`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [...messages, msg] }),
       });
+
       const data = await response.json();
 
       const ai = {
@@ -94,7 +100,8 @@ export default function CoachPage() {
         date: new Date().toISOString(),
       };
       setMessages((m) => [...m, ai]);
-    } catch {
+    } catch (err) {
+      console.error("Error:", err);
       const ai = {
         id: Date.now() + 1,
         from: "ai",
@@ -129,7 +136,7 @@ export default function CoachPage() {
               AI Life Coach 💬
             </h1>
             <p className="text-sm text-slate-400 mt-1">
-              Reflect with a gentle, private assistant. (Local-only demo)
+              Reflect with a gentle, private assistant.
             </p>
           </div>
 
