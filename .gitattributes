@@ -1,0 +1,18 @@
+# Node/JS projects
+*.js     text eol=lf
+*.ts     text eol=lf
+*.jsx    text eol=lf
+*.tsx    text eol=lf
+*.json   text eol=lf
+*.css    text eol=lf
+*.html   text eol=lf
+*.mjs    text eol=lf
+
+# Shell scripts or PowerShell files can keep CRLF
+*.sh     text eol=lf
+*.ps1    text eol=crlf
+
+# Ignore generated folders
+node_modules/  export-ignore
+.next/         export-ignore
+dist/          export-ignore
