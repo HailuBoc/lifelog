@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Sun, Moon } from "lucide-react";
+import jwt_decode from "jwt-decode";
 
 export default function HomePage() {
   const [data, setData] = useState({
@@ -19,31 +20,36 @@ export default function HomePage() {
   const statusRef = useRef(null);
   const [newHabit, setNewHabit] = useState("");
 
-  const USER_ID = "demo"; // Replace with auth/user ID if implemented
+  // 🔑 NEW: auth state
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [user, setUser] = useState(null); // optional: store user info
+
+  const USER_ID = user?.id || "demo"; // Use logged-in user ID if available
   const API_BASE = "https://lifelog-7qzu.onrender.com/api/lifelog";
 
   const completedHabitsCount = data.habits.filter((h) => h.completed).length;
 
-  // Fetch initial data from backend
   useEffect(() => {
+    // Reduced motion
     setPrefersReducedMotion(
       typeof window !== "undefined" &&
         window.matchMedia("(prefers-reduced-motion: reduce)").matches
     );
 
+    // Fetch initial data
     fetch(`${API_BASE}/${USER_ID}`)
       .then((res) => res.json())
       .then((resData) => setData(resData))
-      .catch(() => {
-        // fallback to empty data
+      .catch(() =>
         setData({
           todayMood: "😊 Happy",
           habits: [],
           journals: [],
           insights: [],
-        });
-      });
+        })
+      );
 
+    // Theme setup
     const storedTheme = localStorage.getItem("lifelog:theme");
     const prefersDark =
       window.matchMedia &&
@@ -51,9 +57,12 @@ export default function HomePage() {
     const currentTheme = storedTheme || (prefersDark ? "dark" : "light");
     setTheme(currentTheme);
     document.documentElement.classList.toggle("dark", currentTheme === "dark");
+
+    // 🔑 Check login state
+    const token = localStorage.getItem("lifelog:auth");
+    setIsLoggedIn(!!token);
   }, []);
 
-  // Theme toggle
   function toggleTheme() {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
@@ -61,7 +70,7 @@ export default function HomePage() {
     document.documentElement.classList.toggle("dark", newTheme === "dark");
     announce(`Switched to ${newTheme} mode`);
 
-    // Persist theme to backend if needed
+    // Persist theme (optional)
     fetch(`${API_BASE}/${USER_ID}/theme`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -69,7 +78,6 @@ export default function HomePage() {
     }).catch(() => {});
   }
 
-  // Accessibility announcer
   function announce(msg) {
     if (statusRef.current) {
       statusRef.current.textContent = msg;
@@ -79,7 +87,12 @@ export default function HomePage() {
     }
   }
 
-  // Update mood
+  function handleLogout() {
+    localStorage.removeItem("lifelog:auth");
+    setIsLoggedIn(false);
+    setUser(null);
+  }
+
   function updateMood() {
     if (!moodDraft.trim()) return;
     setData((d) => ({ ...d, todayMood: moodDraft.trim() }));
@@ -92,24 +105,17 @@ export default function HomePage() {
     announce("Mood updated");
   }
 
-  // Add journal
-  // ...existing code...
-  // Add journal
   function addJournalEntry() {
     if (!newJournal.trim()) return;
-
-    // optimistic local entry so it appears immediately in Recent Entries
     const optimistic = {
       id: `local:${Date.now()}`,
       date: new Date().toISOString(),
       text: newJournal.trim(),
     };
-
     setData((d) => ({ ...d, journals: [optimistic, ...d.journals] }));
     setNewJournal("");
     announce("Journal entry added");
 
-    // send to backend, replace optimistic entry with saved entry when returned
     fetch(`${API_BASE}/${USER_ID}/journal`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -120,19 +126,14 @@ export default function HomePage() {
         setData((d) => ({
           ...d,
           journals: d.journals.map((j) =>
-            // match optimistic by its temporary id, replace with server entry
             j.id === optimistic.id ? savedEntry : j
           ),
         }));
       })
-      .catch(() => {
-        // keep optimistic entry if backend fails (no-op)
-      });
+      .catch(() => {});
   }
 
-  // Remove journal
   function removeJournalEntry(id) {
-    // if it's a local optimistic entry, remove locally without contacting backend
     if (String(id).startsWith("local:")) {
       setData((d) => ({
         ...d,
@@ -141,7 +142,6 @@ export default function HomePage() {
       announce("Journal entry removed");
       return;
     }
-
     fetch(`${API_BASE}/${USER_ID}/journal/${id}`, { method: "DELETE" })
       .then(() =>
         setData((d) => ({
@@ -149,16 +149,10 @@ export default function HomePage() {
           journals: d.journals.filter((j) => (j._id ?? j.id) !== id),
         }))
       )
-      .catch(() => {
-        // ignore
-      });
+      .catch(() => {});
     announce("Journal entry removed");
   }
-  // ...existing code...
 
-  // Toggle habit
-  // ...existing code...
-  // Toggle habit
   function toggleHabit(id) {
     fetch(`${API_BASE}/${USER_ID}/habit/${id}/toggle`, { method: "PUT" })
       .then((res) => res.json())
@@ -172,32 +166,8 @@ export default function HomePage() {
     announce("Habit toggled");
   }
 
-  // Set habit daily time (HH:MM) - updates UI optimistically and tries backend
-  function setHabitTime(id) {
-    const time = prompt(
-      "Set daily time for this habit (HH:MM), leave blank to clear:"
-    );
-    if (time === null) return; // cancelled
-    setData((d) => ({
-      ...d,
-      habits: d.habits.map((h) =>
-        h._id === id || h.id === id ? { ...h, time: time || undefined } : h
-      ),
-    }));
-    // persist to backend (best-effort)
-    fetch(`${API_BASE}/${USER_ID}/habit/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ time: time || null }),
-    }).catch(() => {});
-    announce(time ? `Habit time set to ${time}` : "Habit time cleared");
-  }
-
-  // Set habit category/tag (e.g., Work, Personal)
   function setHabitCategory(id) {
-    const cat = prompt(
-      "Set habit category (e.g. Work, Personal), leave blank to clear:"
-    );
+    const cat = prompt("Set habit category (e.g. Work, Personal):");
     if (cat === null) return;
     setData((d) => ({
       ...d,
@@ -210,14 +180,13 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ category: cat || null }),
     }).catch(() => {});
-    announce(cat ? `Habit category set to ${cat}` : "Habit category cleared");
+    announce(cat ? `Habit category set` : "Habit category cleared");
   }
-  // ...existing code...
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-950 to-black text-slate-100 p-4 sm:p-6 transition-colors duration-500">
       {/* Header */}
-      <header className="sticky top-0 z-40 backdrop-blur-sm bg-slate-900/50 border-b border-slate-800 rounded-b-md p-3 mb-4 flex items-center gap-3">
+      <header className="sticky top-0 z-40 backdrop-blur-sm bg-slate-900/50 border-b border-slate-800 rounded-b-md p-3 mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="text-indigo-300 text-lg font-semibold">
             🧠 LifeLog
@@ -226,25 +195,49 @@ export default function HomePage() {
             Reflect • Track • Grow
           </div>
         </div>
+
+        <div className="flex items-center gap-2">
+          {!isLoggedIn ? (
+            <>
+              <Link
+                href="/login"
+                className="hidden sm:inline px-3 py-1 rounded-md text-sm text-slate-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm rounded-md shadow-sm hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label="Create an account"
+              >
+                ➕ Sign up
+              </Link>
+            </>
+          ) : (
+            <button
+              onClick={handleLogout}
+              className="px-3 py-1 bg-rose-600 hover:bg-rose-500 rounded-md text-sm text-white"
+            >
+              Log out
+            </button>
+          )}
+        </div>
       </header>
 
+      {/* === Main Dashboard === */}
       <div className="flex flex-col md:flex-row gap-6">
-        {/* Mobile Nav Drawer */}
+        {/* Sidebar */}
         <nav
-          className={`md:w-64 w-full md:flex-shrink-0 md:block bg-slate-800/60 border border-slate-700 rounded-lg p-4 transition-transform duration-200 ease-in-out
-            ${
-              mobileNavOpen
-                ? "translate-y-0"
-                : "-translate-y-2 md:translate-y-0"
-            } md:static md:translate-y-0`}
+          className={`md:w-64 w-full md:flex-shrink-0 md:block bg-slate-800/60 border border-slate-700 rounded-lg p-4 transition-transform duration-200 ease-in-out ${
+            mobileNavOpen ? "translate-y-0" : "-translate-y-2 md:translate-y-0"
+          } md:static md:translate-y-0`}
           role="navigation"
-          aria-label="Main navigation"
         >
           <ul className="space-y-2">
             <li>
               <Link
                 href="/"
-                className="block p-2 rounded-md hover:bg-slate-700/60 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="block p-2 rounded-md hover:bg-slate-700/60"
               >
                 🏠 Dashboard
               </Link>
@@ -252,47 +245,47 @@ export default function HomePage() {
             <li>
               <Link
                 href="/journal"
-                className="block p-2 rounded-md hover:bg-slate-700/60 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="block p-2 rounded-md hover:bg-slate-700/60"
               >
                 📝 Journal
               </Link>
             </li>
             <li>
-              <a
+              <Link
                 href="/analytics"
-                className="block p-2 rounded-md hover:bg-slate-700/60 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="block p-2 rounded-md hover:bg-slate-700/60"
               >
                 📊 Analytics
-              </a>
+              </Link>
             </li>
             <li>
-              <a
+              <Link
                 href="/coach"
-                className="block p-2 rounded-md hover:bg-slate-700/60 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="block p-2 rounded-md hover:bg-slate-700/60"
               >
                 💬 Coach
-              </a>
+              </Link>
             </li>
             <li>
-              <a
+              <Link
                 href="/habits"
-                className="block p-2 rounded-md hover:bg-slate-700/60 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="block p-2 rounded-md hover:bg-slate-700/60"
               >
                 ⏱️ Habits
-              </a>
+              </Link>
             </li>
             <li>
-              <a
+              <Link
                 href="/settings"
-                className="block p-2 rounded-md hover:bg-slate-700/60 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="block p-2 rounded-md hover:bg-slate-700/60"
               >
                 ⚙️ Settings
-              </a>
+              </Link>
             </li>
           </ul>
         </nav>
 
-        {/* Main column */}
+        {/* === Main Content === */}
         <main className="flex-1">
           <div className="mx-auto max-w-5xl">
             {/* Quick Stats Grid (responsive) */}
@@ -576,9 +569,10 @@ export default function HomePage() {
           </div>
         </main>
       </div>
-      {/* Rest of your existing dashboard */}
-      {/* ⬇️ Your existing sections go here (mood, habits, journals, etc.) */}
-      {/* Just paste back your full main dashboard code below this line */}
     </div>
   );
+}
+
+{
+  /* Main column */
 }

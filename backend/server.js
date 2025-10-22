@@ -5,6 +5,7 @@ import connectDB from "./config/db.js";
 import lifelogRoutes from "./routes/lifelogRoutes.js";
 import journalRoutes from "./routes/journalRoutes.js";
 import coachRouter from "./routes/coach.js";
+import authRoutes from "./routes/authRoutes.js";
 
 dotenv.config();
 connectDB();
@@ -17,6 +18,8 @@ app.use(express.json());
 app.use("/api/lifelog", lifelogRoutes);
 app.use("/api/journal", journalRoutes);
 app.use("/api/coach", coachRouter);
+app.use("/api/auth", authRoutes);
+
 app.get("/", (req, res) => res.send("LifeLog API running ✅"));
 
 const PORT = process.env.PORT || 5000;
