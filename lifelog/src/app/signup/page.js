@@ -281,36 +281,6 @@ export default function SignUpPage() {
           </div>
         )}
 
-        {/* Reminders & Timezone */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2 text-sm">
-            <input
-              id="reminders"
-              type="checkbox"
-              checked={reminders}
-              onChange={(e) => setReminders(e.target.checked)}
-              className="w-4 h-4 rounded bg-slate-900/40 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <label htmlFor="reminders" className="text-slate-300">
-              Enable local reminders
-            </label>
-          </div>
-
-          <div className="text-sm">
-            <label className="text-slate-300 mr-2">Timezone</label>
-            <select
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-              className="rounded-md bg-slate-900/40 border border-slate-700 text-slate-100 p-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value={Intl.DateTimeFormat().resolvedOptions().timeZone}>
-                {Intl.DateTimeFormat().resolvedOptions().timeZone}
-              </option>
-              <option value="UTC">UTC</option>
-            </select>
-          </div>
-        </div>
-
         {/* Submit */}
         <div className="flex items-center gap-3">
           <button

@@ -4,8 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Sun, Moon } from "lucide-react";
 import jwt_decode from "jwt-decode";
+import { useRouter } from "next/navigation";
+
+// ...existing code...
 
 export default function HomePage() {
+  const router = useRouter();
   const [data, setData] = useState({
     todayMood: "",
     habits: [],
@@ -36,38 +40,81 @@ export default function HomePage() {
         window.matchMedia("(prefers-reduced-motion: reduce)").matches
     );
 
-    // Fetch initial data
-    fetch(`${API_BASE}/${USER_ID}`)
-      .then((res) => res.json())
-      .then((resData) => setData(resData))
-      .catch(() =>
+    // Theme setup (apply before fetch so UI doesn't flash)
+    try {
+      const storedTheme = localStorage.getItem("lifelog:theme");
+      const prefersDark =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const currentTheme = storedTheme || (prefersDark ? "dark" : "light");
+      setTheme(currentTheme);
+      document.documentElement.classList.toggle(
+        "dark",
+        currentTheme === "dark"
+      );
+    } catch {}
+
+    // 🔑 Check auth and load user info; redirect to login if not present
+    try {
+      const token = localStorage.getItem("lifelog:auth");
+      if (!token) {
+        router.push("/login");
+        return;
+      }
+      setIsLoggedIn(true);
+
+      const rawUser = localStorage.getItem("lifelog:user");
+      if (rawUser) {
+        setUser(JSON.parse(rawUser));
+      } else {
+        // try to decode JWT if no user saved
+        try {
+          const decoded = jwt_decode(token);
+          const id = decoded?.id || decoded?.sub || decoded?.userId;
+          setUser({ id });
+        } catch {
+          // fallback: keep demo until backend returns actual data
+          setUser({ id: "demo" });
+        }
+      }
+    } catch (err) {
+      // If anything fails, redirect to login for a consistent auth flow
+      router.push("/login");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch user lifelog when user is resolved
+  useEffect(() => {
+    if (!user?.id) return;
+
+    async function load() {
+      try {
+        const res = await fetch(`${API_BASE}/${user.id}`);
+        if (!res.ok) throw new Error("Failed to fetch user data");
+        const resData = await res.json();
+        setData(resData);
+      } catch (err) {
+        // fallback defaults if backend unavailable
         setData({
           todayMood: "😊 Happy",
           habits: [],
           journals: [],
           insights: [],
-        })
-      );
+        });
+      }
+    }
 
-    // Theme setup
-    const storedTheme = localStorage.getItem("lifelog:theme");
-    const prefersDark =
-      window.matchMedia &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const currentTheme = storedTheme || (prefersDark ? "dark" : "light");
-    setTheme(currentTheme);
-    document.documentElement.classList.toggle("dark", currentTheme === "dark");
-
-    // 🔑 Check login state
-    const token = localStorage.getItem("lifelog:auth");
-    setIsLoggedIn(!!token);
-  }, []);
+    load();
+  }, [user]);
 
   function toggleTheme() {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
-    localStorage.setItem("lifelog:theme", newTheme);
-    document.documentElement.classList.toggle("dark", newTheme === "dark");
+    try {
+      localStorage.setItem("lifelog:theme", newTheme);
+      document.documentElement.classList.toggle("dark", newTheme === "dark");
+    } catch {}
     announce(`Switched to ${newTheme} mode`);
 
     // Persist theme (optional)
@@ -89,8 +136,10 @@ export default function HomePage() {
 
   function handleLogout() {
     localStorage.removeItem("lifelog:auth");
+    localStorage.removeItem("lifelog:user");
     setIsLoggedIn(false);
     setUser(null);
+    router.push("/login");
   }
 
   function updateMood() {
@@ -103,6 +152,23 @@ export default function HomePage() {
     }).catch(() => {});
     setMoodDraft("");
     announce("Mood updated");
+  }
+  function formatEntryDate(entry) {
+    const raw = entry?.date ?? entry?.createdAt ?? entry?.timestamp ?? null;
+    if (!raw) return "";
+
+    const d = new Date(raw);
+    if (isNaN(d)) return String(raw);
+
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false, // optional, show 24h format
+    });
   }
 
   function addJournalEntry() {
@@ -183,6 +249,9 @@ export default function HomePage() {
     announce(cat ? `Habit category set` : "Habit category cleared");
   }
 
+  // ...existing JSX UI remains unchanged...
+
+  // ...existing code...
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-950 to-black text-slate-100 p-4 sm:p-6 transition-colors duration-500">
       {/* Header */}
@@ -480,7 +549,7 @@ export default function HomePage() {
                 </p>
                 <div className="mt-3 text-xs text-slate-500">
                   {data.journals.length
-                    ? new Date(data.journals[0].date).toLocaleString()
+                    ? formatEntryDate(data.journals[0])
                     : ""}
                 </div>
               </div>
@@ -535,6 +604,7 @@ export default function HomePage() {
             </section>
 
             {/* Recent Journals (animated list) */}
+
             <section>
               <h2 className="text-lg font-bold text-slate-100 mb-4">
                 Recent Journal Entries
@@ -545,14 +615,15 @@ export default function HomePage() {
                 )}
                 {data.journals.map((j, idx) => (
                   <article
-                    key={`${j._id || j.id || "local"}-${idx}-${Date.now()}`}
+                    key={`${j._id || j.id || "local"}-${idx}`}
                     role="article"
                     tabIndex={0}
                     className="bg-slate-800/60 p-4 rounded-lg border border-slate-700 transition-transform hover:scale-[1.01]"
                   >
                     <div className="flex items-start justify-between gap-3">
+                      {/* ✅ Display local time consistently */}
                       <div className="text-sm text-slate-300">
-                        {new Date(j.date).toLocaleString()}
+                        {formatEntryDate(j)}
                       </div>
                       <button
                         onClick={() => removeJournalEntry(j._id)}
@@ -575,4 +646,9 @@ export default function HomePage() {
 
 {
   /* Main column */
+}
+// ...existing code...
+
+{
+  /* Recent Journals (animated list) */
 }
