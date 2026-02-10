@@ -34,4 +34,10 @@ router.delete("/:userId/habit/:habitId", deleteHabit);
 // THEME
 router.put("/:userId/theme", updateTheme);
 
+// SEARCH
+router.get("/:userId/search", (req, res, next) => {
+  // We'll implement searchHabitsJournals in the controller
+  import("../controllers/lifelogController.js").then(m => m.searchLifeLog(req, res));
+});
+
 export default router;

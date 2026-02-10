@@ -166,3 +166,47 @@ export const updateTheme = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// ✅ Search habits and journals
+export const searchLifeLog = async (req, res) => {
+  const { userId } = req.params;
+  const { q } = req.query;
+
+  if (!q) return res.status(400).json({ message: "Query is required" });
+
+  try {
+    const userLog = await LifeLog.findOne({ userId });
+    if (!userLog) return res.status(404).json({ message: "User not found" });
+
+    const query = q.toLowerCase();
+    const results = [];
+
+    // Search habits
+    userLog.habits.forEach((h) => {
+      if (h.name.toLowerCase().includes(query)) {
+        results.push({
+          type: "Habit",
+          text: h.name,
+          date: userLog.updatedAt || new Date(),
+        });
+      }
+    });
+
+    // Search journals
+    userLog.journals.forEach((j) => {
+      if (j.text.toLowerCase().includes(query)) {
+        results.push({
+          type: "Journal",
+          text: j.text,
+          date: j.date || j.createdAt,
+        });
+      }
+    });
+
+    res.json({
+      results: results.sort((a, b) => new Date(b.date) - new Date(a.date)),
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
