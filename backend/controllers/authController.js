@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import User from "../models/userModel.js";
+import { sendOTPEmail } from "../utils/emailService.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_key";
 
@@ -113,8 +114,13 @@ export const forgotPassword = async (req, res) => {
     user.resetPasswordExpires = Date.now() + 600000; // 10 minutes for OTP
     await user.save();
 
-    // In a real app, send email here. For now, log to console for demo persistence.
-    console.log(`[PASS_RESET_DEBUG] OTP for ${email}: ${otp}`);
+    // Send real email
+    try {
+      await sendOTPEmail(email, otp);
+    } catch (emailErr) {
+      console.error("OTP Email delivery failed:", emailErr);
+      // We still return success-like message for security, but log the error
+    }
     
     res.json({ message: "If an account exists, an OTP was sent." });
   } catch (err) {
