@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import useAuth from "@/hooks/useAuth";
 
 const STORAGE_KEY = "lifelog:data:v1";
