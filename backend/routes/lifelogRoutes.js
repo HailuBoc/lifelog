@@ -10,7 +10,11 @@ import {
   deleteHabit,
 } from "../controllers/lifelogController.js";
 
+import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
+
+router.use(authMiddleware);
 
 // GET user lifelog
 router.get("/:userId", getLifeLog);

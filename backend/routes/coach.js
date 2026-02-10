@@ -4,10 +4,14 @@ import OpenAI from "openai";
 import dotenv from "dotenv";
 dotenv.config();
 
+import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+router.use(authMiddleware);
 
 router.post("/", async (req, res) => {
   try {
