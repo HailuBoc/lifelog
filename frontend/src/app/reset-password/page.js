@@ -48,7 +48,6 @@ function ResetPasswordForm() {
       
       if (res.ok) {
         setSuccess(true);
-        setTimeout(() => router.push("/login"), 3000);
       } else {
         setError(data.message || "Invalid or expired OTP. Please request a new one.");
       }

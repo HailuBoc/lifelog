@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
 
@@ -9,6 +10,8 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [countdown, setCountdown] = useState(5);
+  const router = useRouter();
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -37,6 +40,21 @@ export default function ForgotPasswordPage() {
     }
   }
 
+  useEffect(() => {
+    if (!submitted) return;
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          router.push(`/reset-password?email=${encodeURIComponent(email)}`);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [submitted, router, email]);
+
   if (submitted) {
     return (
       <main className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-slate-900 via-slate-950 to-black text-slate-100">
@@ -47,6 +65,10 @@ export default function ForgotPasswordPage() {
           <h1 className="text-2xl font-semibold text-white mb-2">Check your email</h1>
           <p className="text-slate-400 mb-8">
             If an account exists for <span className="text-indigo-300 font-medium">{email}</span>, you will receive a 6-digit OTP shortly.
+            <br />
+            <span className="text-emerald-400 text-xs mt-2 block italic">
+              Redirecting to reset page in {countdown}s...
+            </span>
           </p>
           <Link
             href={`/reset-password?email=${encodeURIComponent(email)}`}
