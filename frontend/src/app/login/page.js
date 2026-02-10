@@ -27,6 +27,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
+  const [serverError, setServerError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const liveRef = useRef(null);
 
@@ -68,6 +69,7 @@ export default function LoginPage() {
 
     setSaving(true);
     setIsLoading(true);
+    setServerError("");
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -84,7 +86,9 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok || !data.token) {
-        announce(data.message || "Login failed. Check your credentials.");
+        const msg = data.message || "Login failed. Check your credentials.";
+        setServerError(msg);
+        announce(msg);
         return;
       }
 
@@ -104,8 +108,10 @@ export default function LoginPage() {
     } catch (err) {
       console.error("Login error:", err);
       if (err.name === 'AbortError') {
+        setServerError("Request timeout. Try again.");
         announce("Request timeout. Try again.");
       } else {
+        setServerError("Server error. Try again later.");
         announce("Server error. Try again later.");
       }
     } finally {
@@ -130,6 +136,12 @@ export default function LoginPage() {
         <p className="text-sm text-slate-400 mb-4">
           Welcome back! Please log in to your account.
         </p>
+
+        {serverError && (
+          <div className="mb-4 p-3 rounded-lg bg-rose-500/20 border border-rose-500/50 text-rose-300 text-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            {serverError}
+          </div>
+        )}
 
         <label className="block mb-2 text-sm">
           <span className="text-slate-200">Email</span>
