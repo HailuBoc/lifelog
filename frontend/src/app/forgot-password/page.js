@@ -46,8 +46,14 @@ export default function ForgotPasswordPage() {
           </div>
           <h1 className="text-2xl font-semibold text-white mb-2">Check your email</h1>
           <p className="text-slate-400 mb-8">
-            If an account exists for <span className="text-indigo-300 font-medium">{email}</span>, you will receive a password reset link shortly.
+            If an account exists for <span className="text-indigo-300 font-medium">{email}</span>, you will receive a 6-digit OTP shortly.
           </p>
+          <Link
+            href={`/reset-password?email=${encodeURIComponent(email)}`}
+            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold py-3 rounded-xl shadow-lg mb-6 block"
+          >
+            Enter OTP & Reset Password
+          </Link>
           <Link
             href="/login"
             className="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 font-medium transition-colors"

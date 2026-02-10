@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 import User from "../models/userModel.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_key";
@@ -105,37 +106,36 @@ export const forgotPassword = async (req, res) => {
       return res.json({ message: "If an account exists, a reset link was sent." });
     }
 
-    // Generate token
-    const crypto = await import("node:crypto");
-    const token = crypto.randomBytes(20).toString("hex");
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    user.resetPasswordToken = token;
-    user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+    user.resetPasswordToken = otp;
+    user.resetPasswordExpires = Date.now() + 600000; // 10 minutes for OTP
     await user.save();
 
     // In a real app, send email here. For now, log to console for demo persistence.
-    console.log(`[PASS_RESET_DEBUG] Token for ${email}: ${token}`);
+    console.log(`[PASS_RESET_DEBUG] OTP for ${email}: ${otp}`);
     
-    res.json({ message: "If an account exists, a reset link was sent." });
+    res.json({ message: "If an account exists, an OTP was sent." });
   } catch (err) {
     console.error("Forgot password error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// POST /api/auth/reset-password/:token
+// POST /api/auth/reset-password
 export const resetPassword = async (req, res) => {
   try {
-    const { token } = req.params;
-    const { password } = req.body;
+    const { email, otp, password } = req.body;
 
     const user = await User.findOne({
-      resetPasswordToken: token,
+      email,
+      resetPasswordToken: otp,
       resetPasswordExpires: { $gt: Date.now() },
     });
 
     if (!user) {
-      return res.status(400).json({ message: "Invalid or expired token" });
+      return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
     // Hash new password
