@@ -10,24 +10,34 @@ import {
   deleteHabit,
 } from "../controllers/lifelogController.js";
 
+import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 
+router.use(authMiddleware);
+
 // GET user lifelog
-router.get("/:userId", getLifeLog);
+router.get("/", getLifeLog);
 
 // MOOD
-router.put("/:userId/mood", updateMood);
+router.put("/mood", updateMood);
 
 // JOURNALS
-router.post("/:userId/journal", addJournal);
-router.delete("/:userId/journal/:journalId", deleteJournal);
+router.post("/journal", addJournal);
+router.delete("/journal/:journalId", deleteJournal);
 
 // HABITS
-router.post("/:userId/habit", addHabit);
-router.put("/:userId/habit/:habitId/toggle", toggleHabit);
-router.delete("/:userId/habit/:habitId", deleteHabit);
+router.post("/habit", addHabit);
+router.put("/habit/:habitId/toggle", toggleHabit);
+router.delete("/habit/:habitId", deleteHabit);
 
 // THEME
-router.put("/:userId/theme", updateTheme);
+router.put("/theme", updateTheme);
+
+// SEARCH
+router.get("/search", (req, res, next) => {
+  // We'll implement searchHabitsJournals in the controller
+  import("../controllers/lifelogController.js").then(m => m.searchLifeLog(req, res));
+});
 
 export default router;

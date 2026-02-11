@@ -16,6 +16,13 @@ const lifeLogSchema = new mongoose.Schema({
   todayMood: { type: String, default: "😊 Happy" },
   habits: [habitSchema],
   journals: [journalSchema],
+  messages: [
+    {
+      from: { type: String, enum: ["ai", "user"], required: true },
+      text: { type: String, required: true },
+      date: { type: Date, default: Date.now },
+    },
+  ],
   insights: [String],
   theme: { type: String, default: "light" },
   lastReset: { type: String }, // tracks last reset date
