@@ -1,51 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import useAuth from "@/hooks/useAuth";
-
-const STORAGE_KEY = "lifelog:data:v1";
-
-/* small safe localStorage wrapper with in-memory fallback */
-function createStorage(key) {
-  let memory = null;
-  const hasLocal =
-    typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-
-  return {
-    get() {
-      if (!hasLocal) return memory;
-      try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : memory;
-      } catch (e) {
-        return memory;
-      }
-    },
-    set(value) {
-      memory = value;
-      if (!hasLocal) return;
-      try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch (e) {
-        // ignore
-      }
-    },
-  };
-}
-
-const store = createStorage(STORAGE_KEY);
+import { store } from "@/lib/storage";
 
 export default function JournalPage() {
-  const { user, token, loading } = useAuth();
+  const { user, token, loading } = useAuth(false);
   const [journals, setJournals] = useState([]);
   const [draft, setDraft] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const announceRef = useRef(null);
   const textareaRef = useRef(null);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-  const JOURNAL_API = `${API_URL}/api/journal`;
+  const JOURNAL_API = `${API_URL}/api/lifelog`;
 
   // ✅ Load from backend first, fallback to localStorage
   useEffect(() => {
@@ -56,20 +25,27 @@ export default function JournalPage() {
     );
 
     async function loadJournals() {
-      if (!user || !token) return;
-      try {
-        const res = await fetch(`${JOURNAL_API}/${user.id}`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        if (!res.ok) throw new Error("Backend unavailable");
-        const data = await res.json();
-        setJournals(data.journals || []);
-      } catch {
-        const saved = store.get();
-        if (saved?.journals) setJournals(saved.journals);
+      if (user && token) {
+        try {
+          const res = await fetch(`${JOURNAL_API}`, {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          });
+          if (!res.ok) throw new Error("Backend unavailable");
+          const data = await res.json();
+          setJournals(Array.isArray(data.journals) ? data.journals : []);
+          setIsInitialLoad(false);
+          return;
+        } catch (err) {
+          console.error("Load fail, trying local:", err);
+        }
       }
+
+      // Guest or Fallback
+      const saved = store.get(user?.id);
+      if (saved?.journals) setJournals(saved.journals);
+      setIsInitialLoad(false);
     }
 
     if (!loading) {
@@ -77,16 +53,18 @@ export default function JournalPage() {
     }
   }, [loading, user, token, JOURNAL_API]);
 
-  // ✅ Save locally for offline use
+  // ✅ Save locally for offline use (ONLY AFTER INITIAL LOAD)
   useEffect(() => {
+    if (isInitialLoad) return;
+    
     try {
-      const existing = store.get() || {};
+      const existing = store.get(user?.id) || {};
       existing.journals = journals;
-      store.set(existing);
+      store.set(user?.id, existing);
     } catch {
       // ignore
     }
-  }, [journals]);
+  }, [journals, isInitialLoad, user?.id]);
 
   function announce(msg) {
     if (!announceRef.current) return;
@@ -112,7 +90,7 @@ export default function JournalPage() {
     announce("Journal entry added");
 
     try {
-      const res = await fetch(`${JOURNAL_API}/${user.id}/journal`, {
+      const res = await fetch(`${JOURNAL_API}/journal`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -157,7 +135,7 @@ export default function JournalPage() {
     // only call backend if not a local entry
     if (!String(id).startsWith("local-") && user && token) {
       try {
-        await fetch(`${JOURNAL_API}/${user.id}/journal/${id}`, {
+        await fetch(`${JOURNAL_API}/journal/${id}`, {
           method: "DELETE",
           headers: {
             "Authorization": `Bearer ${token}`

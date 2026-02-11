@@ -20,11 +20,11 @@ export default function useAuth(redirectIfUnauthenticated = true) {
       } catch (e) {
         console.error("Failed to parse user from storage", e);
       }
-    } else if (redirectIfUnauthenticated) {
+    } else if (redirectIfUnauthenticated && !loading) {
       router.push("/login");
     }
     setLoading(false);
-  }, [redirectIfUnauthenticated, router]);
+  }, [redirectIfUnauthenticated, router, loading]);
 
   const logout = () => {
     localStorage.removeItem("lifelog_token");

@@ -1,44 +1,9 @@
 import useAuth from "@/hooks/useAuth";
 
-const STORAGE_KEY = "lifelog:data:v1";
-
-/* Safe localStorage wrapper with in-memory fallback */
-function createStorage(key) {
-  let memory = null;
-  const hasLocal =
-    typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-
-  return {
-    get() {
-      if (!hasLocal) return memory;
-      try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : memory;
-      } catch {
-        return memory;
-      }
-    },
-    set(value) {
-      memory = value;
-      if (!hasLocal) return;
-      try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch {}
-    },
-    clear() {
-      memory = null;
-      if (!hasLocal) return;
-      try {
-        localStorage.removeItem(key);
-      } catch {}
-    },
-  };
-}
-
-const store = createStorage(STORAGE_KEY);
+import { store } from "@/lib/storage";
 
 export default function SettingsPage() {
-  const { user, token, loading } = useAuth();
+  const { user, token, loading } = useAuth(false);
   const [settings, setSettings] = useState(() => {
     const saved = store.get()?.settings ?? {};
     return {
@@ -48,6 +13,7 @@ export default function SettingsPage() {
   });
   const [exporting, setExporting] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isClient, setIsClient] = useState(false);
   const announceRef = useRef(null);
 
@@ -59,34 +25,24 @@ export default function SettingsPage() {
     setIsClient(true);
   }, []);
 
-  /* ✅ Apply theme immediately */
-  useEffect(() => {
-    if (!isClient) return;
-    try {
-      document.documentElement.classList.toggle(
-        "dark",
-        settings.theme === "dark"
-      );
-      localStorage.setItem("lifelog:theme", settings.theme);
-    } catch {}
-  }, [settings.theme, isClient]);
-
   /* ✅ Load existing settings from store */
   useEffect(() => {
     try {
-      const saved = store.get();
-      if (saved?.settings) setSettings(saved.settings);
+      const existing = store.get(user?.id);
+      if (existing?.settings) setSettings(existing.settings);
     } catch {}
-  }, []);
+    setIsInitialLoad(false);
+  }, [user?.id]);
 
-  /* ✅ Persist settings in shared localStorage */
+  /* ✅ Persist settings in shared localStorage (ONLY AFTER INITIAL LOAD) */
   useEffect(() => {
+    if (isInitialLoad) return;
     try {
-      const existing = store.get() || {};
+      const existing = store.get(user?.id) || {};
       existing.settings = settings;
-      store.set(existing);
+      store.set(user?.id, existing);
     } catch {}
-  }, [settings]);
+  }, [settings, isInitialLoad, user?.id]);
 
   /* ✅ Toggle dark/light theme */
   function toggleTheme() {
@@ -112,7 +68,7 @@ export default function SettingsPage() {
       // try fetching from backend if available
       let backendData = {};
       try {
-        const res = await fetch(`${API_BASE}/${user?.id}`, {
+        const res = await fetch(`${API_BASE}`, {
           headers: {
             "Authorization": `Bearer ${token}`
           }
@@ -156,7 +112,7 @@ export default function SettingsPage() {
 
     try {
       // clear local storage
-      store.clear();
+      store.clear(user?.id);
       localStorage.removeItem("lifelog:theme");
 
       // reset settings in memory (theme preserved)
@@ -164,7 +120,7 @@ export default function SettingsPage() {
 
       // attempt to clear backend data too
       try {
-        await fetch(`${API_BASE}/${user?.id}/clear`, { 
+        await fetch(`${API_BASE}/clear`, { 
           method: "DELETE",
           headers: {
             "Authorization": `Bearer ${token}`

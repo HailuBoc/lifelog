@@ -5,11 +5,12 @@ import Link from "next/link";
 import { Sun, Moon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
+import { store } from "@/lib/storage";
 
 // ...existing code...
 
 export default function HomePage() {
-  const { user, token, loading, logout } = useAuth();
+  const { user, token, loading, logout } = useAuth(false);
   const router = useRouter();
   const [data, setData] = useState({
     todayMood: "",
@@ -20,15 +21,17 @@ export default function HomePage() {
   const [theme, setTheme] = useState("light");
   const [newJournal, setNewJournal] = useState("");
   const [moodDraft, setMoodDraft] = useState("");
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
-  const statusRef = useRef(null);
+  const [statusRef, setStatusRef] = useState(null);
   const [newHabit, setNewHabit] = useState("");
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const statusElRef = useRef(null);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   const API_BASE = `${API_URL}/api/lifelog`;
 
-  const completedHabitsCount = data.habits.filter((h) => h.completed).length;
+  const completedHabitsCount = (data?.habits || []).filter((h) => h?.completed).length;
 
   useEffect(() => {
     // Reduced motion
@@ -54,26 +57,56 @@ export default function HomePage() {
 
   // Fetch user lifelog when user is resolved
   useEffect(() => {
-    if (!user || !token) return;
-
     async function load() {
+      // If we have a user and token, try backend
+      if (user && token) {
+        try {
+          const res = await fetch(`${API_BASE}`, {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          });
+          if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+          
+          const resData = await res.json();
+          setData({
+            todayMood: resData?.todayMood || "😊 Happy",
+            habits: Array.isArray(resData?.habits) ? resData.habits : [],
+            journals: Array.isArray(resData?.journals) ? resData.journals : [],
+            insights: Array.isArray(resData?.insights) ? resData.insights : ["Stay consistent!"],
+          });
+          setIsInitialLoad(false);
+          return;
+        } catch (err) {
+          console.error("Backend fetch failed, falling back to local:", err);
+        }
+      }
+
+      // Guest or Backend Failure: Try dedicated local storage
       try {
-        const res = await fetch(`${API_BASE}/${user.id}`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        if (!res.ok) throw new Error("Failed to fetch user data");
-        const resData = await res.json();
-        setData(resData);
-      } catch (err) {
-        // fallback defaults if backend unavailable
-        setData({
-          todayMood: "😊 Happy",
-          habits: [],
-          journals: [],
-          insights: [],
-        });
+        const saved = store.get(user?.id);
+        if (saved) {
+          setData(prev => ({
+            ...prev,
+            ...saved
+          }));
+        } else if (!user) {
+          // Default guest data if nothing stored
+          setData({
+            todayMood: "😊 Thinking",
+            habits: [
+              { name: "Read 30 mins" },
+              { name: "Exercise 20 mins" },
+              { name: "Meditate" },
+            ],
+            journals: [],
+            insights: ["Login to save your progress permanently!"],
+          });
+        }
+      } catch (e) {
+        console.error("Local load failed:", e);
+      } finally {
+        setIsInitialLoad(false);
       }
     }
 
@@ -81,6 +114,25 @@ export default function HomePage() {
       load();
     }
   }, [loading, user, token, API_BASE]);
+ 
+  // ✅ Save locally for offline use (ONLY AFTER INITIAL LOAD)
+  useEffect(() => {
+    if (isInitialLoad) return;
+    
+    // Safety check: don't wipe local if data is suspiciously empty
+    if (!data || (data.todayMood === "" && !data.habits?.length)) return;
+
+    try {
+      store.set(user?.id, {
+        todayMood: data.todayMood,
+        habits: data.habits,
+        journals: data.journals,
+        insights: data.insights
+      });
+    } catch (e) {
+      console.warn("Local sync fail:", e);
+    }
+  }, [data, isInitialLoad, user?.id]);
 
   function toggleTheme() {
     const newTheme = theme === "dark" ? "light" : "dark";
@@ -92,7 +144,7 @@ export default function HomePage() {
     announce(`Switched to ${newTheme} mode`);
 
     // Persist theme (optional)
-    fetch(`${API_BASE}/${user?.id}/theme`, {
+    fetch(`${API_BASE}/theme`, {
       method: "PUT",
       headers: { 
         "Content-Type": "application/json",
@@ -118,7 +170,7 @@ export default function HomePage() {
   function updateMood() {
     if (!moodDraft.trim()) return;
     setData((d) => ({ ...d, todayMood: moodDraft.trim() }));
-    fetch(`${API_BASE}/${user?.id}/mood`, {
+    fetch(`${API_BASE}/mood`, {
       method: "PUT",
       headers: { 
         "Content-Type": "application/json",
@@ -158,7 +210,7 @@ export default function HomePage() {
     setNewJournal("");
     announce("Journal entry added");
 
-    fetch(`${API_BASE}/${user?.id}/journal`, {
+    fetch(`${API_BASE}/journal`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
@@ -187,7 +239,7 @@ export default function HomePage() {
       announce("Journal entry removed");
       return;
     }
-    fetch(`${API_BASE}/${user?.id}/journal/${id}`, { 
+    fetch(`${API_BASE}/journal/${id}`, { 
       method: "DELETE",
       headers: {
         "Authorization": `Bearer ${token}`
@@ -204,7 +256,7 @@ export default function HomePage() {
   }
 
   function toggleHabit(id) {
-    fetch(`${API_BASE}/${user?.id}/habit/${id}/toggle`, { 
+    fetch(`${API_BASE}/habit/${id}/toggle`, { 
       method: "PUT",
       headers: {
         "Authorization": `Bearer ${token}`
@@ -230,7 +282,7 @@ export default function HomePage() {
         h._id === id || h.id === id ? { ...h, category: cat || undefined } : h
       ),
     }));
-    fetch(`${API_BASE}/${user?.id}/habit/${id}`, {
+    fetch(`${API_BASE}/habit/${id}`, {
       method: "PUT",
       headers: { 
         "Content-Type": "application/json",
@@ -422,7 +474,7 @@ export default function HomePage() {
 
                     try {
                       const res = await fetch(
-                        `${API_BASE}/${user?.id}/habit`,
+                        `${API_BASE}/habit`,
                         {
                           method: "POST",
                           headers: { 
@@ -491,7 +543,7 @@ export default function HomePage() {
                           onClick={async () => {
                             try {
                               const res = await fetch(
-                                `${API_BASE}/${user?.id}/habit/${h._id}/toggle`,
+                                `${API_BASE}/habit/${h._id}/toggle`,
                                 { 
                                   method: "PUT",
                                   headers: {
@@ -524,7 +576,7 @@ export default function HomePage() {
                           onClick={async () => {
                             try {
                               await fetch(
-                                `${API_BASE}/${user?.id}/habit/${h._id}`,
+                                `${API_BASE}/habit/${h._id}`,
                                 { 
                                   method: "DELETE",
                                   headers: {

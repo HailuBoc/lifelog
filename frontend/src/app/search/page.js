@@ -1,16 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useAuth from "@/hooks/useAuth";
 import { Search, Loader2 } from "lucide-react";
 
 export default function SearchPage() {
-  const { user, token, loading } = useAuth();
+  const { user, token, loading } = useAuth(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+  const API_BASE = `${API_URL}/api/lifelog`;
+
+  /* ✅ History Load on Mount */
+  useEffect(() => {
+    async function init() {
+      if (!user || !token) return;
+      try {
+        await fetch(`${API_BASE}`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        // Just probing to ensure backend is ready/warmed up
+      } catch {} finally {
+        setIsInitialLoad(false);
+      }
+    }
+    if (!loading) init();
+  }, [loading, user, token, API_BASE]);
 
   async function handleSearch(e) {
     if (e) e.preventDefault();
@@ -19,7 +37,7 @@ export default function SearchPage() {
     setSearching(true);
     try {
       // Note: Backend search endpoint might need to be verified/implemented
-      const res = await fetch(`${API_URL}/api/lifelog/${user.id}/search?q=${encodeURIComponent(query)}`, {
+      const res = await fetch(`${API_URL}/api/lifelog/search?q=${encodeURIComponent(query)}`, {
         headers: {
           "Authorization": `Bearer ${token}`
         }
@@ -46,7 +64,8 @@ export default function SearchPage() {
     );
   }
 
-  if (!user) return null;
+  // No guest logout redirect for search, but we might hide search if no data
+  // for now just allow the UI.
 
   return (
     <section className="max-w-4xl mx-auto px-4 py-8">

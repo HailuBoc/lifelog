@@ -1,42 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useAuth from "@/hooks/useAuth";
 
-const STORAGE_KEY = "lifelog:data:v1";
-
-/* simple localStorage wrapper */
-function createStorage(key) {
-  let memory = null;
-  const hasLocal =
-    typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-
-  return {
-    get() {
-      if (!hasLocal) return memory;
-      try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : memory;
-      } catch {
-        return memory;
-      }
-    },
-    set(value) {
-      memory = value;
-      if (!hasLocal) return;
-      try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch {}
-    },
-    clear() {
-      memory = null;
-      if (!hasLocal) return;
-      try {
-        localStorage.removeItem(key);
-      } catch {}
-    },
-  };
-}
-
-const store = createStorage(STORAGE_KEY);
+import { store } from "@/lib/storage";
 
 const STOPWORDS = new Set([
   "the",
@@ -166,9 +131,10 @@ function generateInsights(journals = [], habits = [], rangeDays = 14) {
 
 // --- Main component ---
 export default function AnalyticsPage() {
-  const { user, token, loading } = useAuth();
+  const { user, token, loading } = useAuth(false);
   const [data, setData] = useState({ journals: [], habits: [], insights: [] });
   const [rangeDays, setRangeDays] = useState(14);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const announceRef = useRef(null);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -176,20 +142,38 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     async function load() {
-      if (!user || !token) return;
-      try {
-        const res = await fetch(`${LIFELOG_API}/${user.id}`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        if (!res.ok) throw new Error("Backend unavailable");
-        const resData = await res.json();
-        setData(resData);
-      } catch (e) {
-        const saved = store.get();
-        if (saved) setData(saved);
+      if (user && token) {
+        try {
+          const res = await fetch(`${LIFELOG_API}`, {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          });
+          if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+          
+          const resData = await res.json();
+          setData({
+            journals: Array.isArray(resData?.journals) ? resData.journals : [],
+            habits: Array.isArray(resData?.habits) ? resData.habits : [],
+            insights: Array.isArray(resData?.insights) ? resData.insights : [],
+          });
+          setIsInitialLoad(false);
+          return;
+        } catch (e) {
+          console.error("Load fail, trying local:", e);
+        }
       }
+
+      // Guest or Fallback
+      const saved = store.get(user?.id);
+      if (saved) {
+        setData({
+          journals: Array.isArray(saved.journals) ? saved.journals : [],
+          habits: Array.isArray(saved.habits) ? saved.habits : [],
+          insights: Array.isArray(saved.insights) ? saved.insights : [],
+        });
+      }
+      setIsInitialLoad(false);
     }
 
     if (!loading) {
@@ -197,16 +181,18 @@ export default function AnalyticsPage() {
     }
   }, [loading, user, token, LIFELOG_API]);
 
-  // Update insights automatically
+  // ✅ Save locally for offline use (ONLY AFTER INITIAL LOAD)
   useEffect(() => {
-    const insights = generateInsights(data.journals, data.habits, rangeDays);
-    setData((prev) => ({ ...prev, insights }));
-  }, [data.journals, data.habits, rangeDays]);
+    if (isInitialLoad) return;
+    try {
+      store.set(user?.id, data);
+    } catch (e) {}
+  }, [data, isInitialLoad, user?.id]);
 
   function clearAllData() {
     if (!confirm("Clear all stored LifeLog data? This cannot be undone."))
       return;
-    store.clear();
+    store.clear(user?.id);
     setData({ journals: [], habits: [], insights: [] });
     announce("All data cleared");
   }
@@ -243,7 +229,7 @@ export default function AnalyticsPage() {
       labels.push(key.slice(5));
       map.set(key, 0);
     }
-    data.journals.forEach((j) => {
+    data.journals?.forEach((j) => {
       const key = formatDateKey(j.date || j.createdAt || Date.now());
       if (map.has(key)) map.set(key, map.get(key) + 1);
     });
@@ -251,15 +237,16 @@ export default function AnalyticsPage() {
   }, [data.journals, rangeDays]);
 
   const habitStats = useMemo(() => {
-    const total = data.habits.length;
-    const completed = data.habits.filter((h) => h.completed).length;
+    const habits = Array.isArray(data.habits) ? data.habits : [];
+    const total = habits.length;
+    const completed = habits.filter((h) => h.completed).length;
     const avgStreak =
       total === 0
         ? 0
         : Math.round(
-            data.habits.reduce((s, h) => s + (h.streak || 0), 0) / total
+            habits.reduce((s, h) => s + (h.streak || 0), 0) / total
           );
-    const topStreak = data.habits.reduce(
+    const topStreak = habits.reduce(
       (max, h) => Math.max(max, h.streak || 0),
       0
     );

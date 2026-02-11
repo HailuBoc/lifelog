@@ -3,45 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import useAuth from "@/hooks/useAuth";
-
-const STORAGE_KEY = "lifelog:data:v1";
-
-/* safe localStorage wrapper with in-memory fallback */
-function createStorage(key) {
-  let memory = null;
-  const hasLocal =
-    typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-
-  return {
-    get() {
-      if (!hasLocal) return memory;
-      try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : memory;
-      } catch (e) {
-        return memory;
-      }
-    },
-    set(value) {
-      memory = value;
-      if (!hasLocal) return;
-      try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch (e) {
-        // ignore
-      }
-    },
-    clear() {
-      memory = null;
-      if (!hasLocal) return;
-      try {
-        localStorage.removeItem(key);
-      } catch (e) {}
-    },
-  };
-}
-
-const store = createStorage(STORAGE_KEY);
+import { store } from "@/lib/storage";
 
 const defaultHabits = [
   { id: 1, name: "Read 30 mins", completed: false, streak: 2 },
@@ -49,9 +11,10 @@ const defaultHabits = [
 ];
 
 export default function HabitsPage() {
-  const { user, token, loading } = useAuth();
+  const { user, token, loading } = useAuth(false);
   const [habits, setHabits] = useState([]);
   const [newName, setNewName] = useState("");
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const announceRef = useRef(null);
   const inputRef = useRef(null);
@@ -67,20 +30,27 @@ export default function HabitsPage() {
     );
 
     async function loadHabits() {
-      if (!user || !token) return;
-      try {
-        const res = await fetch(`${LIFELOG_API}/${user.id}`, {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        });
-        if (!res.ok) throw new Error("Backend unavailable");
-        const data = await res.json();
-        setHabits(data.habits || []);
-      } catch (e) {
-        const saved = store.get() || {};
-        setHabits(saved.habits ?? defaultHabits);
+      if (user && token) {
+        try {
+          const res = await fetch(`${LIFELOG_API}`, {
+            headers: {
+              "Authorization": `Bearer ${token}`
+            }
+          });
+          if (!res.ok) throw new Error("Backend unavailable");
+          const data = await res.json();
+          setHabits(Array.isArray(data.habits) ? data.habits : []);
+          setIsInitialLoad(false);
+          return;
+        } catch (e) {
+          console.error("Load fail, trying local:", e);
+        }
       }
+
+      // Guest or Fallback
+      const saved = store.get(user?.id) || {};
+      setHabits(saved.habits ?? defaultHabits);
+      setIsInitialLoad(false);
     }
 
     if (!loading) {
@@ -88,13 +58,18 @@ export default function HabitsPage() {
     }
   }, [loading, user, token, LIFELOG_API]);
 
+  // ✅ Save locally for offline use (ONLY AFTER INITIAL LOAD)
   useEffect(() => {
+    if (isInitialLoad) return;
+    
     try {
-      const existing = store.get() || {};
+      const existing = store.get(user?.id) || {};
       existing.habits = habits;
-      store.set(existing);
-    } catch (e) {}
-  }, [habits]);
+      store.set(user?.id, existing);
+    } catch (e) {
+      // ignore
+    }
+  }, [habits, isInitialLoad, user?.id]);
 
   function announce(msg) {
     if (!announceRef.current) return;
@@ -116,7 +91,7 @@ export default function HabitsPage() {
     announce("Adding habit...");
 
     try {
-      const res = await fetch(`${LIFELOG_API}/${user.id}/habit`, {
+      const res = await fetch(`${LIFELOG_API}/habit`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -159,7 +134,7 @@ export default function HabitsPage() {
     );
 
     try {
-      await fetch(`${LIFELOG_API}/${user.id}/habit/${id}/toggle`, {
+      await fetch(`${LIFELOG_API}/habit/${id}/toggle`, {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${token}`
@@ -182,7 +157,7 @@ export default function HabitsPage() {
     );
     
     try {
-      await fetch(`${LIFELOG_API}/${user.id}/habit/${id}`, {
+      await fetch(`${LIFELOG_API}/habit/${id}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${token}`

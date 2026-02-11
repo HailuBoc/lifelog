@@ -1,37 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import useAuth from "@/hooks/useAuth";
-
-const STORAGE_KEY = "lifelog:data:v1";
- 
-// Create a simple storage helper
-function createStorage(key) {
-  let memory = null;
-  const hasLocal =
-    typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-
-  return {
-    get() {
-      if (!hasLocal) return memory;
-      try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : memory;
-      } catch {
-        return memory;
-      }
-    },
-    set(value) {
-      memory = value;
-      if (!hasLocal) return;
-      try {
-        localStorage.setItem(key, JSON.stringify(value));
-      } catch {}
-    },
-  };
-}
-
-const store = createStorage(STORAGE_KEY);
+import { store } from "@/lib/storage";
 
 const defaultMessages = [
   {
@@ -43,33 +13,59 @@ const defaultMessages = [
 ];
 
 export default function CoachPage() {
-  const { user, token, loading } = useAuth();
+  const { user, token, loading } = useAuth(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const endRef = useRef(null);
   const liveRef = useRef(null);
 
   // ✅ Use environment variable for backend URL
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"; // fallback for local dev
 
-  // Load from localStorage on mount
+  // Load from backend on mount
   useEffect(() => {
-    const saved = store.get();
-    if (saved?.messages?.length) {
-      setMessages(saved.messages);
-    } else {
-      setMessages(defaultMessages);
-    }
-  }, []);
+    async function loadHistory() {
+      if (user && token) {
+        try {
+          const res = await fetch(`${API_URL}/api/coach`, {
+            headers: { "Authorization": `Bearer ${token}` }
+          });
+          if (!res.ok) throw new Error("History unavailable");
+          const data = await res.json();
+          setMessages(data.messages?.length ? data.messages : defaultMessages);
+          setIsInitialLoad(false);
+          return;
+        } catch (err) {
+          console.warn("Backend fail, trying local:", err);
+        }
+      }
 
-  // Persist messages and scroll
+      // Guest or Fallback
+      const saved = store.get(user?.id);
+      setMessages(saved?.messages?.length ? saved.messages : defaultMessages);
+      setIsInitialLoad(false);
+    }
+
+    if (!loading) {
+      loadHistory();
+    }
+  }, [loading, user, token, API_URL]);
+
+  // Persist messages locally (sync only after initial load)
   useEffect(() => {
-    store.set({ messages });
+    if (isInitialLoad) return;
+    try {
+      const existing = store.get(user?.id) || {};
+      existing.messages = messages;
+      store.set(user?.id, existing);
+    } catch {}
+    
     if (endRef.current) {
       endRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, isInitialLoad, user?.id]);
 
   async function postUserMessage(text) {
     if (!text.trim()) return;
@@ -84,14 +80,14 @@ export default function CoachPage() {
     setSending(true);
 
     try {
-      // ✅ Call the deployed backend dynamically
+      // ✅ Post only the new message, backend handles history
       const response = await fetch(`${API_URL}/api/coach`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ messages: [...messages, msg] }),
+        body: JSON.stringify({ newMessage: msg }),
       });
 
       const data = await response.json();
@@ -126,10 +122,20 @@ export default function CoachPage() {
     }
   }
 
-  function clearConversation() {
+  async function clearConversation() {
     if (!confirm("Clear the conversation?")) return;
     setMessages([]);
     store.set({ messages: [] });
+    
+    // sync with backend
+    try {
+      await fetch(`${API_URL}/api/coach`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+    } catch (e) {
+      console.warn("Failed to clear on backend", e);
+    }
   }
 
   return (

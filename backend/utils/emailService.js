@@ -5,6 +5,9 @@ import nodemailer from "nodemailer";
  * Expects SMTP_USER and SMTP_PASS to be set in environment.
  */
 export const sendOTPEmail = async (email, otp) => {
+  console.log(`[DEBUG] SMTP_USER: ${process.env.SMTP_USER ? "FOUND" : "MISSING"}`);
+  console.log(`[DEBUG] SMTP_PASS: ${process.env.SMTP_PASS ? "FOUND" : "MISSING"}`);
+
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.error("[CRITICAL] SMTP credentials missing in .env");
     throw new Error("Email service not configured. Please contact support.");
