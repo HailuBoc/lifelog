@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Lock, ArrowLeft, CheckCircle2, AlertCircle, Hash } from "lucide-react";
@@ -17,6 +17,7 @@ function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [countdown, setCountdown] = useState(3);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -58,6 +59,21 @@ function ResetPasswordForm() {
     }
   }
 
+  useEffect(() => {
+    if (!success) return;
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          router.push("/login");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [success, router]);
+
   if (success) {
     return (
       <div className="text-center">
@@ -66,7 +82,11 @@ function ResetPasswordForm() {
         </div>
         <h1 className="text-2xl font-semibold text-white mb-2">Password Reset!</h1>
         <p className="text-slate-400 mb-8">
-          Your password has been successfully updated. Redirecting to login...
+          Your password has been successfully updated.
+          <br />
+          <span className="text-emerald-400 text-xs mt-2 block italic">
+            Redirecting to login in {countdown}s...
+          </span>
         </p>
         <Link
           href="/login"

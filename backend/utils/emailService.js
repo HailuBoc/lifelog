@@ -2,40 +2,27 @@ import nodemailer from "nodemailer";
 
 /**
  * Sends a 6-digit OTP email to the user.
- * For local development, this defaults to Ethereal (mock) if SMTP_USER is not set.
+ * Expects SMTP_USER and SMTP_PASS to be set in environment.
  */
 export const sendOTPEmail = async (email, otp) => {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.error("[CRITICAL] SMTP credentials missing in .env");
+    throw new Error("Email service not configured. Please contact support.");
+  }
+
   try {
-    let transporter;
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: parseInt(process.env.SMTP_PORT || "465"),
+      secure: process.env.SMTP_SECURE !== "false", // Default to true for port 465
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
 
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      // Real SMTP config
-      transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.gmail.com",
-        port: process.env.SMTP_PORT || 465,
-        secure: true,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-    } else {
-      // Ethereal (Testing) fallback
-      const testAccount = await nodemailer.createTestAccount();
-      transporter = nodemailer.createTransport({
-        host: "smtp.ethereal.email",
-        port: 587,
-        secure: false, 
-        auth: {
-          user: testAccount.user,
-          pass: testAccount.pass,
-        },
-      });
-      console.log(`[EMAIL_DEBUG] Using Ethereal account: ${testAccount.user}`);
-    }
-
-    const info = await transporter.sendMail({
-      from: '"LifeLog App" <no-reply@lifelogapp.com>',
+    await transporter.sendMail({
+      from: `"LifeLog App" <${process.env.SMTP_USER}>`,
       to: email,
       subject: "Your LifeLog Password Reset OTP",
       text: `Your password reset code is: ${otp}. It expires in 10 minutes.`,
@@ -51,13 +38,10 @@ export const sendOTPEmail = async (email, otp) => {
       `,
     });
 
-    if (!process.env.SMTP_USER) {
-      console.log(`[EMAIL_DEBUG] Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
-    }
-
-    return info;
+    console.log(`[SUCCESS] OTP email sent to ${email}`);
+    return true;
   } catch (err) {
     console.error("Email send failure:", err);
-    throw new Error("Failed to send OTP email");
+    throw new Error("Failed to send OTP email. Please try again later.");
   }
 };
