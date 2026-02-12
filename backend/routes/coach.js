@@ -12,10 +12,10 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-router.use(authMiddleware);
+// --- Routes ---
 
-// GET chat history
-router.get("/", async (req, res) => {
+// GET chat history (requires auth for DB history)
+router.get("/", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
     const userLog = await LifeLog.findOne({ userId });
@@ -27,8 +27,6 @@ router.get("/", async (req, res) => {
 
 // Helper: unified log access
 const getLog = async (userId) => {
-  // We'll import the helper or just implement essentially the same thing here
-  // But since we can't easily share the local helper, let's at least ensure defaults.
   let userLog = await LifeLog.findOne({ userId });
   if (!userLog) {
     userLog = await LifeLog.create({ 
@@ -47,56 +45,91 @@ const getLog = async (userId) => {
   return userLog;
 };
 
-// POST new message & get AI reply
+// POST new message & get AI reply (optional auth)
 router.post("/", async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { messages: history, newMessage } = req.body;
+  // Manual optional auth check
+  let user = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.split(" ")[1];
+    try {
+      const jwt = (await import("jsonwebtoken")).default;
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret_key");
+      user = decoded;
+    } catch (e) {
+      console.warn("Optional auth failed:", e.message);
+    }
+  }
 
+  try {
+    const { newMessage } = req.body;
     if (!newMessage) return res.status(400).json({ error: "Message required" });
 
-    // 1. Get user log
-    let userLog = await getLog(userId);
+    let userLog = null;
+    if (user) {
+      userLog = await getLog(user.id);
+      const userMsg = { from: "user", text: newMessage.text, date: new Date() };
+      if (!userLog.messages) userLog.messages = [];
+      userLog.messages.push(userMsg);
+    }
 
-    // 2. Add user message to DB
-    const userMsg = { from: "user", text: newMessage.text, date: new Date() };
-    if (!userLog.messages) userLog.messages = [];
-    userLog.messages.push(userMsg);
-
-    // 3. Get AI reply
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
+    let replyText;
+    try {
+      // Prepare messages for OpenAI
+      const chatMessages = [
         {
           role: "system",
           content: `You are a gentle, empathetic AI life coach.
-You help users process their emotions, improve habits, and reflect on daily moods.
-Be warm, conversational, and emotionally aware.
-Keep replies under 150 words.`,
-        },
-        ...userLog.messages.slice(-10).map((m) => ({
+  You help users process their emotions, improve habits, and reflect on daily moods.
+  Be warm, conversational, and emotionally aware.
+  Keep replies under 150 words.`,
+        }
+      ];
+
+      // Add history if available
+      if (userLog && userLog.messages) {
+        chatMessages.push(...userLog.messages.slice(-10).map((m) => ({
           role: m.from === "user" ? "user" : "assistant",
           content: m.text,
-        })),
-      ],
-    });
+        })));
+      } else {
+        chatMessages.push({ role: "user", content: newMessage.text });
+      }
 
-    const replyText = completion.choices[0].message.content;
-    const aiMsg = { from: "ai", text: replyText, date: new Date() };
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: chatMessages,
+      });
+      replyText = completion.choices[0].message.content;
+    } catch (apiErr) {
+      console.warn("OpenAI API fail, using fallback:", apiErr.message);
+      const lower = newMessage.text.toLowerCase();
+      if (lower.includes("sad") || lower.includes("bad") || lower.includes("low")) {
+        replyText = "I'm sorry you're feeling this way. Remember that it's okay to have tough days. I'm here to listen if you want to share more about what's on your mind.";
+      } else if (lower.includes("happy") || lower.includes("good") || lower.includes("great")) {
+        replyText = "That's wonderful to hear! I love seeing you in such a great mood. What made your day so special today?";
+      } else if (lower.includes("habit") || lower.includes("routine")) {
+        replyText = "Building habits takes time and patience. You're doing the work just by being aware of it. How's your progress feeling overall?";
+      } else {
+        replyText = "I hear you. Thank you for sharing that with me. I'm here to support you in whatever you're going through today. Tell me more?";
+      }
+    }
 
-    // 4. Add AI message to DB
-    userLog.messages.push(aiMsg);
-    await userLog.save();
+    if (user && userLog) {
+      const aiMsg = { from: "ai", text: replyText, date: new Date() };
+      userLog.messages.push(aiMsg);
+      await userLog.save();
+    }
 
     res.json({ reply: replyText });
   } catch (err) {
     console.error("Coach API error:", err);
-    res.status(500).json({ error: "Failed to get AI reply" });
+    res.status(500).json({ error: "Failed to process message" });
   }
 });
 
-// DELETE history
-router.delete("/", async (req, res) => {
+// DELETE history (requires auth)
+router.delete("/", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
     await LifeLog.findOneAndUpdate({ userId }, { $set: { messages: [] } });

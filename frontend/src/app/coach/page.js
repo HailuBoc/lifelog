@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import useAuth from "@/hooks/useAuth";
 import { store } from "@/lib/storage";
 
@@ -32,11 +33,14 @@ export default function CoachPage() {
           const res = await fetch(`${API_URL}/api/coach`, {
             headers: { "Authorization": `Bearer ${token}` }
           });
-          if (!res.ok) throw new Error("History unavailable");
-          const data = await res.json();
-          setMessages(data.messages?.length ? data.messages : defaultMessages);
-          setIsInitialLoad(false);
-          return;
+          if (!res.ok) {
+            console.warn("History unavailable - falling back to local storage");
+          } else {
+            const data = await res.json();
+            setMessages(data.messages?.length ? data.messages : defaultMessages);
+            setIsInitialLoad(false);
+            return;
+          }
         } catch (err) {
           console.warn("Backend fail, trying local:", err);
         }
@@ -92,12 +96,14 @@ export default function CoachPage() {
 
       const data = await response.json();
 
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Failed to get response from AI");
+      }
+
       const ai = {
         id: Date.now() + 1,
         from: "ai",
-        text:
-          data.reply ||
-          "Hmm, I couldn’t think of a response. Could you rephrase that?",
+        text: data.reply || "I'm sorry, I couldn't generate a response. Please try again.",
         date: new Date().toISOString(),
       };
       setMessages((m) => [...m, ai]);
@@ -106,7 +112,7 @@ export default function CoachPage() {
       const ai = {
         id: Date.now() + 1,
         from: "ai",
-        text: "Sorry, I’m having trouble thinking right now. Try again soon 💭",
+        text: `Error: ${err.message || "I’m having trouble thinking right now. Try again soon 💭"}`,
         date: new Date().toISOString(),
       };
       setMessages((m) => [...m, ai]);

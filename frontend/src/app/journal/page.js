@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
 import useAuth from "@/hooks/useAuth";
 import { store } from "@/lib/storage";
 
@@ -32,11 +33,18 @@ export default function JournalPage() {
               "Authorization": `Bearer ${token}`
             }
           });
-          if (!res.ok) throw new Error("Backend unavailable");
-          const data = await res.json();
-          setJournals(Array.isArray(data.journals) ? data.journals : []);
-          setIsInitialLoad(false);
-          return;
+          if (!res.ok) {
+            console.warn("Backend unavailable - falling back to local storage");
+          } else {
+            const data = await res.json();
+            const loaded = (Array.isArray(data.journals) ? data.journals : []).map(j => ({
+              ...j,
+              _id: (j._id || j.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`
+            }));
+            setJournals(loaded);
+            setIsInitialLoad(false);
+            return;
+          }
         } catch (err) {
           console.error("Load fail, trying local:", err);
         }
@@ -44,7 +52,13 @@ export default function JournalPage() {
 
       // Guest or Fallback
       const saved = store.get(user?.id);
-      if (saved?.journals) setJournals(saved.journals);
+      if (saved?.journals) {
+        const localMeta = (Array.isArray(saved.journals) ? saved.journals : []).map(j => ({
+          ...j,
+          _id: (j._id || j.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`
+        }));
+        setJournals(localMeta);
+      }
       setIsInitialLoad(false);
     }
 
@@ -66,6 +80,24 @@ export default function JournalPage() {
     }
   }, [journals, isInitialLoad, user?.id]);
 
+  function formatEntryDate(entry) {
+    const raw = entry?.date ?? entry?.createdAt ?? entry?.timestamp ?? null;
+    if (!raw) return "";
+
+    const d = new Date(raw);
+    if (isNaN(d)) return String(raw);
+
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false, 
+    });
+  }
+
   function announce(msg) {
     if (!announceRef.current) return;
     announceRef.current.textContent = msg;
@@ -81,7 +113,6 @@ export default function JournalPage() {
       _id: `local-${Date.now()}`,
       date: new Date().toISOString(),
       text: draft.trim(),
-      _entering: true,
     };
 
     setJournals((prev) => [entry, ...prev]);
@@ -99,33 +130,27 @@ export default function JournalPage() {
         body: JSON.stringify({ text: entry.text }),
       });
       const saved = await res.json();
+      if (!saved || !saved._id) return;
 
-      setJournals((prev) => prev.map((j) => (j._id === entry._id ? saved : j)));
+      // Swap local entry with backend entry
+      setJournals((prev) => (prev ?? []).map((j) => (j._id === entry._id ? saved : j)));
     } catch (err) {
       console.error("Failed to sync journal:", err);
     }
-
-    // clear animation flag
-    setTimeout(
-      () =>
-        setJournals((prev) =>
-          prev.map((j) =>
-            j._id === entry._id ? { ...j, _entering: false } : j
-          )
-        ),
-      prefersReducedMotion ? 0 : 300
-    );
   }
 
   // ✅ Remove entry
   async function removeJournalEntry(id) {
+    if (!id) return;
+    const idStr = id.toString();
+    
     setJournals((prev) =>
-      prev.map((j) => (j._id === id ? { ...j, _removing: true } : j))
+      (prev ?? []).map((j) => (j._id?.toString() === idStr ? { ...j, _removing: true } : j))
     );
 
     setTimeout(
       () => {
-        setJournals((prev) => prev.filter((j) => j._id !== id));
+        setJournals((prev) => (prev ?? []).filter((j) => (j._id || "").toString() !== idStr));
       },
       prefersReducedMotion ? 0 : 300
     );
@@ -133,16 +158,16 @@ export default function JournalPage() {
     announce("Journal entry removed");
 
     // only call backend if not a local entry
-    if (!String(id).startsWith("local-") && user && token) {
+    if (!idStr.startsWith("local-") && user && token) {
       try {
-        await fetch(`${JOURNAL_API}/journal/${id}`, {
+        await fetch(`${JOURNAL_API}/journal/${idStr}`, {
           method: "DELETE",
           headers: {
             "Authorization": `Bearer ${token}`
           }
         });
       } catch (e) {
-        console.warn("Failed to delete on backend", e);
+        console.warn("Failed to delete journal on backend", e);
       }
     }
   }
@@ -159,7 +184,7 @@ export default function JournalPage() {
     );
   }
 
-  if (!user) return null;
+  // Guest Mode enabled
 
   return (
     <section className="max-w-4xl mx-auto px-4 py-8">
@@ -233,8 +258,7 @@ export default function JournalPage() {
           {journals.map((entry) => (
             <li
               key={entry._id}
-              className={`relative bg-slate-800/60 p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out
-                ${entry._entering ? "translate-y-2 opacity-0" : ""} ${
+              className={`relative bg-slate-800/60 p-4 rounded-lg border border-slate-700 shadow-sm transition-transform duration-300 ease-in-out ${
                 entry._removing
                   ? "opacity-0 -translate-x-4 scale-95"
                   : "hover:scale-[1.01]"
@@ -243,10 +267,10 @@ export default function JournalPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm text-slate-400">
-                    {new Date(entry.date).toLocaleString()}
+                    {formatEntryDate(entry)}
                   </div>
                   <p className="mt-2 text-slate-100 whitespace-pre-wrap">
-                    {entry.text}
+                    {entry.text || entry.content}
                   </p>
                 </div>
 

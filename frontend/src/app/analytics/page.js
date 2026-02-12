@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import useAuth from "@/hooks/useAuth";
 
@@ -135,7 +137,12 @@ export default function AnalyticsPage() {
   const [data, setData] = useState({ journals: [], habits: [], insights: [] });
   const [rangeDays, setRangeDays] = useState(14);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isClient, setIsClient] = useState(false);
   const announceRef = useRef(null);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   const LIFELOG_API = `${API_URL}/api/lifelog`;
@@ -261,7 +268,7 @@ export default function AnalyticsPage() {
     );
   }
 
-  if (!user) return null;
+  // Guest Mode enabled
 
   return (
     <section className="max-w-4xl mx-auto px-4 py-8">

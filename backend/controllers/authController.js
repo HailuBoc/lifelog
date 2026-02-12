@@ -34,6 +34,10 @@ export const signupUser = async (req, res) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = Date.now() + 3600000; // 1 hour
+
     // Create user
     const user = await User.create({
       name,
@@ -41,17 +45,21 @@ export const signupUser = async (req, res) => {
       passwordHash,
       reminders,
       timezone,
+      otp,
+      otpExpires,
+      isVerified: false
     });
 
-    const token = generateToken(user._id);
+    // Send verification email
+    try {
+      await sendOTPEmail(email, otp);
+    } catch (emailErr) {
+      console.error("Signup OTP Email delivery failed:", emailErr);
+    }
 
     res.status(201).json({
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      reminders: user.reminders,
-      timezone: user.timezone,
-      token,
+      message: "User registered! Please check your email for verification code.",
+      email: user.email
     });
   } catch (err) {
     console.error("Signup error:", err);
@@ -78,6 +86,14 @@ export const loginUser = async (req, res) => {
     const match = await bcrypt.compare(password, user.passwordHash);
     if (!match) {
       return res.status(401).json({ message: "Invalid email or password" });
+    }
+
+    if (!user.isVerified) {
+      return res.status(403).json({ 
+        message: "Please verify your email first.",
+        email: user.email,
+        unverified: true 
+      });
     }
 
     const token = generateToken(user._id);
@@ -153,6 +169,68 @@ export const resetPassword = async (req, res) => {
     res.json({ message: "Password updated successfully" });
   } catch (err) {
     console.error("Reset password error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// POST /api/auth/verify-otp
+export const verifyOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const user = await User.findOne({ 
+      email,
+      otp,
+      otpExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    user.isVerified = true;
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    await user.save();
+
+    const token = generateToken(user._id);
+
+    res.json({
+      message: "Email verified successfully!",
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      token
+    });
+  } catch (err) {
+    console.error("OTP Verification error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// POST /api/auth/resend-otp
+export const resendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: "Email already verified" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    user.otp = otp;
+    user.otpExpires = Date.now() + 3600000;
+    await user.save();
+
+    await sendOTPEmail(email, otp);
+
+    res.json({ message: "A new OTP has been sent to your email." });
+  } catch (err) {
+    console.error("Resend OTP error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

@@ -66,17 +66,24 @@ export default function HomePage() {
               "Authorization": `Bearer ${token}`
             }
           });
-          if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-          
-          const resData = await res.json();
-          setData({
-            todayMood: resData?.todayMood || "😊 Happy",
-            habits: Array.isArray(resData?.habits) ? resData.habits : [],
-            journals: Array.isArray(resData?.journals) ? resData.journals : [],
-            insights: Array.isArray(resData?.insights) ? resData.insights : ["Stay consistent!"],
-          });
-          setIsInitialLoad(false);
-          return;
+          if (!res.ok) {
+            console.warn(`Backend unavailable: ${res.status}`);
+          } else {
+            const resData = await res.json();
+            const backendHabits = (Array.isArray(resData?.habits) ? resData.habits : []).map(h => {
+              const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
+              return { ...h, _id: finalId };
+            });
+            
+            setData({
+              todayMood: resData?.todayMood || "😊 Happy",
+              habits: backendHabits,
+              journals: Array.isArray(resData?.journals) ? resData.journals : [],
+              insights: Array.isArray(resData?.insights) ? resData.insights : ["Stay consistent!"],
+            });
+            setIsInitialLoad(false);
+            return;
+          }
         } catch (err) {
           console.error("Backend fetch failed, falling back to local:", err);
         }
@@ -92,17 +99,28 @@ export default function HomePage() {
           }));
         } else if (!user) {
           // Default guest data if nothing stored
+          const guestHabits = [
+            { _id: "default-1", name: "Read 30 mins", completed: false, streak: 0 },
+            { _id: "default-2", name: "Exercise 20 mins", completed: false, streak: 0 },
+            { _id: "default-3", name: "Meditate", completed: false, streak: 0 },
+          ];
+          
           setData({
             todayMood: "😊 Thinking",
-            habits: [
-              { name: "Read 30 mins" },
-              { name: "Exercise 20 mins" },
-              { name: "Meditate" },
-            ],
+            habits: guestHabits,
             journals: [],
             insights: ["Login to save your progress permanently!"],
           });
         }
+
+        // Migration: Ensure all habits have unique _id as string
+        setData(prev => ({
+          ...prev,
+          habits: (prev.habits || []).map(h => {
+            const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
+            return { ...h, _id: finalId };
+          })
+        }));
       } catch (e) {
         console.error("Local load failed:", e);
       } finally {
@@ -304,7 +322,7 @@ export default function HomePage() {
     );
   }
 
-  if (!user) return null;
+  // Guest Mode is enabled, so we don't return null if !user
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-950 to-black text-slate-100 p-4 sm:p-6 transition-colors duration-500">
@@ -522,7 +540,7 @@ export default function HomePage() {
 
                   {data.habits.map((h) => (
                     <li
-                      key={h._id || h.id}
+                      key={h._id}
                       className={`flex flex-col sm:flex-row sm:items-center justify-between bg-slate-900/30 p-3 rounded-md transition-all duration-200 ${
                         h._toggling
                           ? "scale-95 opacity-70"
@@ -541,9 +559,32 @@ export default function HomePage() {
                       <div className="flex items-center gap-2 mt-2 sm:mt-0">
                         <button
                           onClick={async () => {
+                            if (!h._id) return;
+                            const hId = h._id.toString();
+                            // Optimistic Update
+                            const isCompleted = !h.completed;
+                            setData(prev => ({
+                              ...prev,
+                              habits: (prev.habits || []).map(item => item._id?.toString() === hId ? { 
+                                ...item, 
+                                completed: isCompleted,
+                                streak: isCompleted ? (item.streak || 0) + 1 : Math.max(0, (item.streak || 0) - 1),
+                                _toggling: true 
+                              } : item)
+                            }));
+
+                            setTimeout(() => {
+                              setData(prev => ({
+                                ...prev,
+                                habits: (prev.habits || []).map(item => item._id?.toString() === hId ? { ...item, _toggling: false } : item)
+                              }));
+                            }, 300);
+
+                            if (!user || !token) return;
+
                             try {
                               const res = await fetch(
-                                `${API_BASE}/habit/${h._id}/toggle`,
+                                `${API_BASE}/habit/${hId}/toggle`,
                                 { 
                                   method: "PUT",
                                   headers: {
@@ -551,11 +592,15 @@ export default function HomePage() {
                                   }
                                 }
                               );
+                                if (!res.ok) {
+                                  console.warn("Toggle update failed - keeping optimistic state");
+                                  return;
+                                }
                               const updated = await res.json();
                               setData((prev) => ({
                                 ...prev,
-                                habits: prev.habits.map((x) =>
-                                  x._id === h._id ? updated : x
+                                habits: (prev.habits || []).map((x) =>
+                                  x._id?.toString() === hId ? updated : x
                                 ),
                               }));
                             } catch (err) {
@@ -574,22 +619,30 @@ export default function HomePage() {
 
                         <button
                           onClick={async () => {
+                            if (!h._id) return;
+                            const hId = h._id.toString();
+                            // Optimistic delete
+                            setData(prev => ({
+                              ...prev,
+                              habits: (prev.habits || []).filter(item => (item._id || item.id)?.toString() !== hId)
+                            }));
+
+                            if (!user || !token) return;
+
                             try {
-                              await fetch(
-                                `${API_BASE}/habit/${h._id}`,
-                                { 
-                                  method: "DELETE",
-                                  headers: {
-                                    "Authorization": `Bearer ${token}`
+                                const res = await fetch(
+                                  `${API_BASE}/habit/${hId}`,
+                                  { 
+                                    method: "DELETE",
+                                    headers: {
+                                      "Authorization": `Bearer ${token}`
+                                    }
                                   }
+                                );
+                                if (!res.ok) {
+                                  console.warn("Delete failed - reverting local list (next reload will fix)");
+                                  return;
                                 }
-                              );
-                              setData((prev) => ({
-                                ...prev,
-                                habits: prev.habits.filter(
-                                  (x) => x._id !== h._id
-                                ),
-                              }));
                             } catch (err) {
                               console.error("Delete error:", err);
                             }

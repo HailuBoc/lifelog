@@ -73,6 +73,7 @@ export default function SignUpPage() {
   const [saving, setSaving] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [serverError, setServerError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const liveRef = useRef(null);
 
@@ -118,6 +119,7 @@ export default function SignUpPage() {
 
     setSaving(true);
     setIsLoading(true);
+    setServerError("");
 
     try {
       const API_URL =
@@ -133,23 +135,16 @@ export default function SignUpPage() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !data) {
-        announce(data?.message || "Signup failed");
+        const msg = data?.message || "Signup failed";
+        setServerError(msg);
+        announce(msg);
         return;
       }
 
-      // store JWT locally
-      localStorage.setItem("lifelog_token", data.token);
-
-      // store user info
-      localStorage.setItem(
-        "lifelog_user",
-        JSON.stringify({ id: data.id, name: data.name, email: data.email })
-      );
-
-      announce("Account created successfully!");
+      announce("Account created! Please verify your email.");
       
-      // Fast redirect
-      setTimeout(() => router.push("/"), 500);
+      // Redirect to verification
+      setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(email)}`), 500);
     } catch (err) {
       console.error(err);
       if (err.name === 'AbortError') {
@@ -183,6 +178,12 @@ export default function SignUpPage() {
         >
           Create an account
         </h1>
+
+        {serverError && (
+          <div className="mb-4 p-3 rounded-lg bg-rose-500/20 border border-rose-500/50 text-rose-300 text-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            {serverError}
+          </div>
+        )}
 
         {/* Name Input */}
         <label className="block mb-2 text-sm">

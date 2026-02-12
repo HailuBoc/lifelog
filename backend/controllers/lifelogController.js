@@ -18,9 +18,9 @@ async function getOrCreateLifeLogDoc(userId) {
       userId,
       todayMood: "😊 Happy",
       habits: [
-        { name: "Read 30 mins" },
-        { name: "Exercise 20 mins" },
-        { name: "Meditate" },
+        { name: "Read 30 mins", _id: new mongoose.Types.ObjectId() },
+        { name: "Exercise 20 mins", _id: new mongoose.Types.ObjectId() },
+        { name: "Meditate", _id: new mongoose.Types.ObjectId() },
       ],
       journals: [],
       messages: [],
@@ -36,9 +36,9 @@ async function getOrCreateLifeLogDoc(userId) {
     // Add default habits IF the habits array is empty (for new-ish users)
     if (userLog.habits.length === 0) {
       userLog.habits = [
-        { name: "Read 30 mins" },
-        { name: "Exercise 20 mins" },
-        { name: "Meditate" },
+        { name: "Read 30 mins", _id: new mongoose.Types.ObjectId() },
+        { name: "Exercise 20 mins", _id: new mongoose.Types.ObjectId() },
+        { name: "Meditate", _id: new mongoose.Types.ObjectId() },
       ];
     }
 
