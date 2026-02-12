@@ -6,8 +6,8 @@ import useAuth from "@/hooks/useAuth";
 import { store } from "@/lib/storage";
 
 const defaultHabits = [
-  { id: 1, name: "Read 30 mins", completed: false, streak: 2 },
-  { id: 2, name: "Morning workout", completed: false, streak: 5 },
+  { _id: "1", name: "Read 30 mins", completed: false, streak: 2 },
+  { _id: "2", name: "Morning workout", completed: false, streak: 5 },
 ];
 
 export default function HabitsPage() {
@@ -37,11 +37,18 @@ export default function HabitsPage() {
               "Authorization": `Bearer ${token}`
             }
           });
-          if (!res.ok) throw new Error("Backend unavailable");
-          const data = await res.json();
-          setHabits(Array.isArray(data.habits) ? data.habits : []);
-          setIsInitialLoad(false);
-          return;
+          if (!res.ok) {
+            console.warn("Backend unavailable, using local fallback");
+          } else {
+            const data = await res.json();
+            const backendHabits = (Array.isArray(data.habits) ? data.habits : []).map(h => {
+              const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
+              return { ...h, _id: finalId };
+            });
+            setHabits(backendHabits);
+            setIsInitialLoad(false);
+            return;
+          }
         } catch (e) {
           console.error("Load fail, trying local:", e);
         }
@@ -49,7 +56,15 @@ export default function HabitsPage() {
 
       // Guest or Fallback
       const saved = store.get(user?.id) || {};
-      setHabits(saved.habits ?? defaultHabits);
+      let loadedHabits = saved.habits ?? defaultHabits;
+
+      // Data Migration: Ensure every habit has a unique _id as string
+      loadedHabits = loadedHabits.map(h => {
+        const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
+        return { ...h, _id: finalId };
+      });
+
+      setHabits(loadedHabits);
       setIsInitialLoad(false);
     }
 
@@ -90,6 +105,13 @@ export default function HabitsPage() {
     setNewName("");
     announce("Adding habit...");
 
+      if (!user || !token) {
+        // Guest mode - just finish
+        setHabits((s) => s.map((item) => item._id === tempId ? { ...h, _entering: false } : item));
+        announce("Habit added locally");
+        return;
+      }
+
     try {
       const res = await fetch(`${LIFELOG_API}/habit`, {
         method: "POST",
@@ -100,7 +122,9 @@ export default function HabitsPage() {
         body: JSON.stringify({ name }),
       });
       const saved = await res.json();
-      setHabits((s) => s.map((item) => item._id === tempId ? saved : item));
+      if (saved && saved._id) {
+        setHabits((s) => s.map((item) => item._id === tempId ? saved : item));
+      }
       announce("Habit added");
     } catch (err) {
       console.error(err);
@@ -118,9 +142,11 @@ export default function HabitsPage() {
   }
 
   async function toggleHabit(id) {
+    if (!id) return;
+    const idStr = id.toString();
     setHabits((s) =>
       s.map((h) => {
-        if (h._id !== id) return h;
+        if (h._id.toString() !== idStr) return h;
         const completed = !h.completed;
         return {
           ...h,
@@ -133,45 +159,77 @@ export default function HabitsPage() {
       })
     );
 
+    if (!user || !token) {
+      announce("Local update saved");
+      return;
+    }
+
     try {
-      await fetch(`${LIFELOG_API}/habit/${id}/toggle`, {
+      const res = await fetch(`${LIFELOG_API}/habit/${id}/toggle`, {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${token}`
         }
       });
+
+      if (!res.ok) {
+        console.warn("Toggle update failed - fallback to optimistic");
+        return;
+      }
+
+      const updated = await res.json();
+      if (!updated || !updated._id) return;
+
+      setHabits((s) => s.map((h) => h._id.toString() === idStr ? { ...updated, _toggling: true } : h));
     } catch (err) {
       console.error(err);
+      announce("Sync failed - reverting change.");
+      // Revert optimistic change
+      setHabits((s) =>
+        s.map((h) => {
+          if (h._id.toString() !== idStr) return h;
+          const completed = !h.completed;
+          return {
+            ...h,
+            completed,
+            streak: completed
+              ? (h.streak || 0) + 1
+              : Math.max(0, (h.streak || 0) - 1),
+          };
+        })
+      );
     }
 
     setTimeout(
-      () => setHabits((s) => s.map((h) => ({ ...h, _toggling: false }))),
+      () => setHabits((s) => s.map((h) => h._id.toString() === idStr ? { ...h, _toggling: false } : h)),
       prefersReducedMotion ? 0 : 300
     );
     announce("Habit toggled");
   }
 
   async function removeHabit(id) {
-    setHabits((s) =>
-      s.map((h) => (h._id === id ? { ...h, _removing: true } : h))
-    );
+    if (!id) return;
+    const idStr = id.toString();
     
+    // Truly optimistic delete: remove immediately
+    setHabits((s) => s.filter((h) => (h._id || "").toString() !== idStr));
+    announce("Habit removed");
+
+    if (!user || !token) return;
+
     try {
-      await fetch(`${LIFELOG_API}/habit/${id}`, {
+      const res = await fetch(`${LIFELOG_API}/habit/${idStr}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${token}`
         }
       });
+      if (!res.ok) {
+        console.warn("Delete failed on server - but kept local removal for smoothness");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Delete error:", err);
     }
-
-    setTimeout(
-      () => setHabits((s) => s.filter((h) => h._id !== id)),
-      prefersReducedMotion ? 0 : 300
-    );
-    announce("Habit removed");
   }
 
   const completedCount = habits.filter((h) => h.completed).length;
@@ -184,7 +242,7 @@ export default function HabitsPage() {
     );
   }
 
-  if (!user) return null;
+  // Guest Mode enabled
 
   return (
     <section className="max-w-4xl mx-auto px-4 py-8">

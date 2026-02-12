@@ -86,6 +86,11 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok || !data.token) {
+        if (res.status === 403 && data.unverified) {
+          announce("Please verify your email.");
+          setTimeout(() => router.push(`/verify-email?email=${encodeURIComponent(email)}`), 1000);
+          return;
+        }
         const msg = data.message || "Login failed. Check your credentials.";
         setServerError(msg);
         announce(msg);
