@@ -97,7 +97,7 @@ export default function CoachPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to get response from AI");
+        throw new Error(data.error || data.message || "Failed to get response from AI");
       }
 
       const ai = {
