@@ -104,9 +104,11 @@ export default function SearchPage() {
                 <p className="text-slate-200">{res.text}</p>
               </div>
             ))
+          ) : query && !searching ? (
             <div className="text-center py-12 text-slate-500 italic">
               No results found for &quot;{query}&quot;. Try different keywords.
             </div>
+          ) : (
             <div className="text-center py-12 text-slate-500 italic">
               🔎 Type something above to start searching...
             </div>
