@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
 import useAuth from "@/hooks/useAuth";
 
 import { store } from "@/lib/storage";

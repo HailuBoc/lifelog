@@ -1,12 +1,11 @@
+import "./config/env.js"; // ✅ Must be first to fix hoisting
 import express from "express";
-import dotenv from "dotenv";
 import cors from "cors";
 import connectDB from "./config/db.js";
 import lifelogRoutes from "./routes/lifelogRoutes.js";
 import coachRouter from "./routes/coach.js";
 import authRoutes from "./routes/authRoutes.js";
-
-dotenv.config();
+ 
 connectDB();
 
 const app = express();
