@@ -121,7 +121,7 @@ function VerifyEmailContent() {
           Verify your email 📧
         </h1>
         <p className="text-sm text-slate-400 mb-6">
-          We've sent a 6-digit verification code to <span className="text-slate-200 font-medium">{email}</span>.
+          We&apos;ve sent a 6-digit verification code to <span className="text-slate-200 font-medium">{email}</span>.
         </p>
 
         {error && (
@@ -166,7 +166,7 @@ function VerifyEmailContent() {
 
         <div className="mt-6 pt-6 border-t border-slate-700/50 flex flex-col items-center gap-4">
           <p className="text-xs text-slate-400">
-            Didn't receive the code?
+            Didn&apos;t receive the code?
           </p>
           <button
             onClick={handleResend}
