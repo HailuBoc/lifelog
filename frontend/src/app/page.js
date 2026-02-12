@@ -415,14 +415,6 @@ export default function HomePage() {
                 ⏱️ Habits
               </Link>
             </li>
-            <li>
-              <Link
-                href="/settings"
-                className="block p-2 rounded-md hover:bg-slate-700/60"
-              >
-                ⚙️ Settings
-              </Link>
-            </li>
           </ul>
         </nav>
 
