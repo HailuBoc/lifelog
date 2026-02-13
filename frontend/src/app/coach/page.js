@@ -185,11 +185,14 @@ export default function CoachPage() {
               </div>
             )}
 
-            {messages.map((m) => {
+            {messages.map((m, i) => {
               const isAI = m.from === "ai";
+              // ✅ Fallback key strategy: ID -> _id -> Index+Timestamp
+              const key = m.id || m._id || `${i}-${new Date(m.date).getTime()}`;
+              
               return (
                 <div
-                  key={m.id}
+                  key={key}
                   className={`flex ${
                     isAI ? "justify-start" : "justify-end"
                   } transition-transform duration-300`}
