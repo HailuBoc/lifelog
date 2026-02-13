@@ -8,8 +8,16 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import LifeLog from "../models/lifelogModel.js";
 
 const router = express.Router();
+
+// ✅ Support for OpenRouter or Standard OpenAI
+const BASE_URL = process.env.OPENAI_BASE_URL || (process.env.OPENAI_API_KEY?.startsWith("sk-or-") ? "https://openrouter.ai/api/v1" : undefined);
+
+console.log("🔑 OpenAI API Key:", process.env.OPENAI_API_KEY ? "Set" : "Not set");
+console.log("🌐 Base URL:", BASE_URL || "Default OpenAI");
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  baseURL: BASE_URL,
 });
 
 // --- Routes ---
@@ -19,7 +27,14 @@ router.get("/", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
     const userLog = await LifeLog.findOne({ userId });
-    res.json({ messages: userLog?.messages || [] });
+    
+    // ✅ Ensure client receives 'id' for key props
+    const messages = (userLog?.messages || []).map(m => ({
+      ...m.toObject(),
+      id: m._id || m.id || Date.now() + Math.random() // Fallback if _id missing
+    }));
+
+    res.json({ messages });
   } catch (err) {
     res.status(500).json({ error: "Failed to load history" });
   }
@@ -66,43 +81,99 @@ router.post("/", async (req, res) => {
     if (!newMessage) return res.status(400).json({ error: "Message required" });
 
     let userLog = null;
+    let savedUserMsg = null;
+
     if (user) {
       userLog = await getLog(user.id);
       const userMsg = { from: "user", text: newMessage.text, date: new Date() };
+      
       if (!userLog.messages) userLog.messages = [];
       userLog.messages.push(userMsg);
+      
+      // Save primarily to generate _id
+      await userLog.save();
+      savedUserMsg = userLog.messages[userLog.messages.length - 1]; // Get the saved msg with _id
     }
 
     let replyText;
-    try {
-      // Prepare messages for OpenAI
-      const chatMessages = [
-        {
-          role: "system",
-          content: `You are a gentle, empathetic AI life coach.
-  You help users process their emotions, improve habits, and reflect on daily moods.
-  Be warm, conversational, and emotionally aware.
-  Keep replies under 150 words.`,
-        }
-      ];
+    let modelUsed = "gpt-4o-mini"; 
+    let apiError = null;
 
-      // Add history if available
-      if (userLog && userLog.messages) {
-        chatMessages.push(...userLog.messages.slice(-10).map((m) => ({
-          role: m.from === "user" ? "user" : "assistant",
-          content: m.text,
-        })));
-      } else {
-        chatMessages.push({ role: "user", content: newMessage.text });
+    // Adjust model if using OpenRouter
+    const modelsToTry = [];
+    if (BASE_URL?.includes("openrouter")) {
+      modelsToTry.push(
+        "meta-llama/llama-3.2-3b-instruct",
+        "mistralai/mistral-7b-instruct", 
+        "meta-llama/llama-3.2-1b-instruct",
+        "huggingfaceh4/zephyr-7b-beta"
+      );
+    } else {
+      modelsToTry.push(modelUsed);
+    }
+
+    // Prepare messages for OpenAI
+    const chatMessages = [
+      {
+        role: "system",
+        content: `You are a gentle, empathetic AI life coach.
+You help users process their emotions, improve habits, and reflect on daily moods.
+Be warm, conversational, and emotionally aware.
+Keep replies under 150 words.`,
       }
+    ];
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: chatMessages,
-      });
-      replyText = completion.choices[0].message.content;
-    } catch (apiErr) {
-      console.warn("OpenAI API fail, using fallback:", apiErr.message);
+    // Add history if available
+    if (userLog && userLog.messages) {
+      // Exclude the just-added message to avoid duplication in context if needed, 
+      // but here we grab the last 10 ignoring the one we *just* pushed 
+      // (actually we just pushed it, so it's in the DB. Let's include it for context)
+      chatMessages.push(...userLog.messages.slice(-11, -1).map((m) => ({ // Slice carefully
+        role: m.from === "user" ? "user" : "assistant",
+        content: m.text,
+      })));
+    }
+    
+    chatMessages.push({ role: "user", content: newMessage.text });
+
+    // Try each model until one works
+    for (const model of modelsToTry) {
+      try {
+        modelUsed = model;
+        console.log("🤖 Making AI API call with model:", modelUsed);
+        console.log("🌐 Using base URL:", BASE_URL);
+
+        const completion = await openai.chat.completions.create({
+          model: modelUsed, 
+          messages: chatMessages,
+          // OpenRouter specific headers (optional but good practice)
+          extraHeaders: BASE_URL?.includes("openrouter") ? {
+            "HTTP-Referer": "https://lifelog.app", 
+            "X-Title": "LifeLog AI Coach",
+          } : undefined,
+        });
+        replyText = completion.choices[0].message.content;
+        console.log("✅ AI reply received:", replyText?.substring(0, 50) + "...");
+        break; // Success! Exit the loop
+      } catch (apiErr) {
+        apiError = apiErr;
+        console.error(`❌ Model ${model} failed:`, {
+          message: apiErr.message,
+          status: apiErr.status,
+          code: apiErr.code,
+          type: apiErr.type
+        });
+        
+        // If this is the last model, we'll use fallback
+        if (model === modelsToTry[modelsToTry.length - 1]) {
+          console.warn("All models failed, using fallback response");
+        }
+      }
+    }
+
+    // If all models failed, use fallback logic
+    if (!replyText) {
+      console.warn("AI API fail, using fallback:", apiError?.message);
       const lower = newMessage.text.toLowerCase();
       if (lower.includes("sad") || lower.includes("bad") || lower.includes("low")) {
         replyText = "I'm sorry you're feeling this way. Remember that it's okay to have tough days. I'm here to listen if you want to share more about what's on your mind.";
@@ -115,13 +186,22 @@ router.post("/", async (req, res) => {
       }
     }
 
+    let savedAiMsg = { from: "ai", text: replyText, date: new Date(), id: Date.now() }; // Default ID if not saved
+
     if (user && userLog) {
       const aiMsg = { from: "ai", text: replyText, date: new Date() };
       userLog.messages.push(aiMsg);
       await userLog.save();
+      savedAiMsg = userLog.messages[userLog.messages.length - 1]; // Get real _id
     }
 
-    res.json({ reply: replyText });
+    // Return the reply AND the IDs so frontend can update keys
+    res.json({ 
+      reply: replyText,
+      userMsgId: savedUserMsg?._id || Date.now(),
+      aiMsgId: savedAiMsg._id || savedAiMsg.id || Date.now() + 1
+    });
+
   } catch (err) {
     console.error("Coach API error:", err);
     res.status(500).json({ error: "Failed to process message" });
