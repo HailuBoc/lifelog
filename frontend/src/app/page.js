@@ -211,6 +211,10 @@ export default function HomePage() {
 
   function updateMood() {
     if (!moodDraft.trim()) return;
+    if (!user || !token) {
+      announce("Please log in to update your mood");
+      return;
+    }
     setData((d) => ({ ...d, todayMood: moodDraft.trim() }));
     fetch(`${API_BASE}/mood`, {
       method: "PUT",
@@ -243,6 +247,10 @@ export default function HomePage() {
 
   function addJournalEntry() {
     if (!newJournal.trim()) return;
+    if (!user || !token) {
+      announce("Please log in to add journal entries");
+      return;
+    }
     const optimistic = {
       id: `local:${Date.now()}`,
       date: new Date().toISOString(),
@@ -273,6 +281,10 @@ export default function HomePage() {
   }
 
   function removeJournalEntry(id) {
+    if (!user || !token) {
+      announce("Please log in to manage journal entries");
+      return;
+    }
     if (String(id).startsWith("local:")) {
       setData((d) => ({
         ...d,
@@ -298,6 +310,10 @@ export default function HomePage() {
   }
 
   function toggleHabit(id) {
+    if (!user || !token) {
+      announce("Please log in to manage habits");
+      return;
+    }
     fetch(`${API_BASE}/habit/${id}/toggle`, { 
       method: "PUT",
       headers: {
@@ -316,6 +332,10 @@ export default function HomePage() {
   }
 
   function setHabitCategory(id) {
+    if (!user || !token) {
+      announce("Please log in to manage habits");
+      return;
+    }
     const cat = prompt("Set habit category (e.g. Work, Personal):");
     if (cat === null) return;
     setData((d) => ({
@@ -463,6 +483,11 @@ export default function HomePage() {
                   <input
                     value={moodDraft}
                     onChange={(e) => setMoodDraft(e.target.value)}
+                    onFocus={() => {
+                      if (!user) {
+                        router.push("/login");
+                      }
+                    }}
                     placeholder="Update mood (e.g., 😊 Excited)"
                     className="flex-1 rounded-md bg-slate-900/40 border border-slate-700 p-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                     aria-label="Update mood"
@@ -575,6 +600,10 @@ export default function HomePage() {
                       <div className="flex items-center gap-2 mt-2 sm:mt-0">
                         <button
                           onClick={async () => {
+                            if (!user) {
+                              router.push("/login");
+                              return;
+                            }
                             if (!h._id) return;
                             const hId = h._id.toString();
                             // Optimistic Update
@@ -594,9 +623,12 @@ export default function HomePage() {
                                 ...prev,
                                 habits: (prev.habits || []).map(item => item._id?.toString() === hId ? { ...item, _toggling: false } : item)
                               }));
-                            }, 300);
+                            }, 500);
 
-                            if (!user || !token) return;
+                            if (!user || !token) {
+                              announce("Local update saved");
+                              return;
+                            }
 
                             try {
                               const res = await fetch(
@@ -635,6 +667,10 @@ export default function HomePage() {
 
                         <button
                           onClick={async () => {
+                            if (!user) {
+                              router.push("/login");
+                              return;
+                            }
                             if (!h._id) return;
                             const hId = h._id.toString();
                             // Optimistic delete
@@ -699,8 +735,17 @@ export default function HomePage() {
               <textarea
                 value={newJournal}
                 onChange={(e) => setNewJournal(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                    if (!user) {
+                      router.push("/login");
+                      return;
+                    }
+                    addJournalEntry();
+                  }
+                }}
                 placeholder="Write about your day..."
-                className="w-full min-h-[90px] rounded-md p-3 bg-slate-900/40 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full min-h-[90px] rounded-md p-3 bg-slate-900/40 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 aria-label="New journal entry"
               />
               <div className="mt-3 flex justify-between items-center gap-2">
@@ -715,7 +760,13 @@ export default function HomePage() {
                     Clear
                   </button>
                   <button
-                    onClick={addJournalEntry}
+                    onClick={() => {
+                      if (!user) {
+                        router.push("/login");
+                        return;
+                      }
+                      addJournalEntry();
+                    }}
                     className="px-4 py-2 rounded-md bg-gradient-to-r from-indigo-600 to-purple-600 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-transform active:scale-95"
                   >
                     Add Entry
@@ -762,8 +813,14 @@ export default function HomePage() {
                         {formatEntryDate(j)}
                       </div>
                       <button
-                        onClick={() => removeJournalEntry(j._id)}
-                        className="text-xs px-2 py-1 rounded-md bg-rose-600 hover:bg-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                        onClick={() => {
+                          if (!user) {
+                            router.push("/login");
+                            return;
+                          }
+                          removeJournalEntry(j._id);
+                        }}
+                        className="text-xs px-2 py-1 rounded-md bg-rose-600 hover:bg-rose-500 text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
                       >
                         Delete
                       </button>

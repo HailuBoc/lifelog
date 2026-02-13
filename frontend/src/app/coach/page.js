@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { store } from "@/lib/storage";
 
@@ -14,6 +15,7 @@ const defaultMessages = [
 ];
 
 export default function CoachPage() {
+  const router = useRouter();
   const { user, token, loading } = useAuth(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -237,6 +239,10 @@ export default function CoachPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (!user) {
+                router.push("/login");
+                return;
+              }
               postUserMessage(input);
             }}
             className="mt-4 flex gap-2 items-end"
