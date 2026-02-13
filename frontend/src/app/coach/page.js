@@ -28,27 +28,40 @@ export default function CoachPage() {
   // Load from backend on mount
   useEffect(() => {
     async function loadHistory() {
+      // First, always try to load from local storage for immediate display
+      const saved = store.get(user?.id);
+      let localMessages = saved?.messages?.length ? saved.messages : defaultMessages;
+      setMessages(localMessages);
+      
+      // If we have a user and token, try backend to sync data
       if (user && token) {
         try {
           const res = await fetch(`${API_URL}/api/coach`, {
             headers: { "Authorization": `Bearer ${token}` }
           });
           if (!res.ok) {
-            console.warn("History unavailable - falling back to local storage");
+            console.warn("Backend unavailable, using local data");
           } else {
             const data = await res.json();
-            setMessages(data.messages?.length ? data.messages : defaultMessages);
+            const backendMessages = data.messages?.length ? data.messages : defaultMessages;
+            
+            // Merge backend messages with local messages
+            // For now, we'll prioritize backend but keep local if backend is empty
+            const finalMessages = data.messages?.length ? backendMessages : localMessages;
+            setMessages(finalMessages);
+            
+            // Save back to local storage
+            const updatedStore = { ...saved, messages: finalMessages };
+            store.set(user?.id, updatedStore);
+            
             setIsInitialLoad(false);
             return;
           }
         } catch (err) {
-          console.warn("Backend fail, trying local:", err);
+          console.warn("Backend fail, using local data:", err);
         }
       }
 
-      // Guest or Fallback
-      const saved = store.get(user?.id);
-      setMessages(saved?.messages?.length ? saved.messages : defaultMessages);
       setIsInitialLoad(false);
     }
 
