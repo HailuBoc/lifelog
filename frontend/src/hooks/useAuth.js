@@ -27,6 +27,7 @@ export default function useAuth(redirectIfUnauthenticated = true) {
   }, [redirectIfUnauthenticated, router, loading]);
 
   const logout = () => {
+    // Only remove auth tokens, keep user data in localStorage for persistence
     localStorage.removeItem("lifelog_token");
     localStorage.removeItem("lifelog_user");
     setUser(null);

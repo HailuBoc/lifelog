@@ -30,6 +30,19 @@ export default function HabitsPage() {
     );
 
     async function loadHabits() {
+      // First, always try to load from local storage for immediate display
+      const saved = store.get(user?.id) || {};
+      let localHabits = saved.habits ?? defaultHabits;
+      
+      // Data Migration: Ensure every habit has a unique _id as string
+      localHabits = localHabits.map(h => {
+        const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
+        return { ...h, _id: finalId };
+      });
+      
+      setHabits(localHabits);
+      
+      // If we have a user and token, try backend to sync data
       if (user && token) {
         try {
           const res = await fetch(`${LIFELOG_API}`, {
@@ -38,33 +51,31 @@ export default function HabitsPage() {
             }
           });
           if (!res.ok) {
-            console.warn("Backend unavailable, using local fallback");
+            console.warn("Backend unavailable, using local data");
           } else {
             const data = await res.json();
             const backendHabits = (Array.isArray(data.habits) ? data.habits : []).map(h => {
               const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
               return { ...h, _id: finalId };
             });
-            setHabits(backendHabits);
+            
+            // Merge backend habits with local habits
+            // For now, we'll prioritize backend but keep local if backend is empty
+            const finalHabits = backendHabits.length > 0 ? backendHabits : localHabits;
+            setHabits(finalHabits);
+            
+            // Save back to local storage
+            const updatedStore = { ...saved, habits: finalHabits };
+            store.set(user?.id, updatedStore);
+            
             setIsInitialLoad(false);
             return;
           }
         } catch (e) {
-          console.error("Load fail, trying local:", e);
+          console.error("Backend load failed, using local data:", e);
         }
       }
 
-      // Guest or Fallback
-      const saved = store.get(user?.id) || {};
-      let loadedHabits = saved.habits ?? defaultHabits;
-
-      // Data Migration: Ensure every habit has a unique _id as string
-      loadedHabits = loadedHabits.map(h => {
-        const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
-        return { ...h, _id: finalId };
-      });
-
-      setHabits(loadedHabits);
       setIsInitialLoad(false);
     }
 

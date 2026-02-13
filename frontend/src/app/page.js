@@ -58,74 +58,97 @@ export default function HomePage() {
   // Fetch user lifelog when user is resolved
   useEffect(() => {
     async function load() {
-      // If we have a user and token, try backend
+      // First, always try to load from local storage for immediate display
+      const localData = store.get(user?.id);
+      if (localData) {
+        console.log("Loading data from local storage:", localData);
+        setData((prev) => ({ ...prev, ...localData }));
+      }
+
+      // If we have a user and token, try backend to sync data
       if (user && token) {
         try {
           const res = await fetch(`${API_BASE}`, {
             headers: {
-              "Authorization": `Bearer ${token}`
-            }
+              "Authorization": `Bearer ${token}`,
+            },
           });
           if (!res.ok) {
-            console.warn(`Backend unavailable: ${res.status}`);
+            console.warn(`Backend unavailable: ${res.status}, using local data`);
           } else {
             const resData = await res.json();
-            const backendHabits = (Array.isArray(resData?.habits) ? resData.habits : []).map(h => {
+            console.log("Backend data received:", resData);
+
+            const backendHabits = (Array.isArray(resData?.habits)
+              ? resData.habits
+              : []
+            ).map((h) => {
               const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
               return { ...h, _id: finalId };
             });
-            
-            setData({
-              todayMood: resData?.todayMood || "😊 Happy",
+
+            const backendData = {
+              todayMood: resData?.todayMood || localData?.todayMood || "😊 Happy",
               habits: backendHabits,
-              journals: Array.isArray(resData?.journals) ? resData.journals : [],
-              insights: Array.isArray(resData?.insights) ? resData.insights : ["Stay consistent!"],
-            });
+              journals: Array.isArray(resData?.journals)
+                ? resData.journals
+                : localData?.journals || [],
+              insights: Array.isArray(resData?.insights)
+                ? resData.insights
+                : localData?.insights || ["Stay consistent!"],
+            };
+
+            // Merge backend data with local data, prioritizing backend for habits but keeping local journals if backend is empty
+            const mergedData = {
+              ...backendData,
+              journals: resData?.journals?.length
+                ? backendData.journals
+                : localData?.journals || [],
+              todayMood: resData?.todayMood || localData?.todayMood || "😊 Happy",
+            };
+
+            setData(mergedData);
+
+            // Save the merged data back to local storage
+            store.set(user?.id, mergedData);
+
             setIsInitialLoad(false);
             return;
           }
         } catch (err) {
-          console.error("Backend fetch failed, falling back to local:", err);
+          console.error("Backend fetch failed, using local data:", err);
         }
       }
 
-      // Guest or Backend Failure: Try dedicated local storage
-      try {
-        const saved = store.get(user?.id);
-        if (saved) {
-          setData(prev => ({
-            ...prev,
-            ...saved
-          }));
-        } else if (!user) {
-          // Default guest data if nothing stored
-          const guestHabits = [
-            { _id: "default-1", name: "Read 30 mins", completed: false, streak: 0 },
-            { _id: "default-2", name: "Exercise 20 mins", completed: false, streak: 0 },
-            { _id: "default-3", name: "Meditate", completed: false, streak: 0 },
-          ];
-          
-          setData({
-            todayMood: "😊 Thinking",
-            habits: guestHabits,
-            journals: [],
-            insights: ["Login to save your progress permanently!"],
-          });
-        }
+      // If no backend data or guest user, ensure we have some default data
+      if (!localData && !user) {
+        const guestHabits = [
+          { _id: "default-1", name: "Read 30 mins", completed: false, streak: 0 },
+          { _id: "default-2", name: "Exercise 20 mins", completed: false, streak: 0 },
+          { _id: "default-3", name: "Meditate", completed: false, streak: 0 },
+        ];
 
-        // Migration: Ensure all habits have unique _id as string
-        setData(prev => ({
-          ...prev,
-          habits: (prev.habits || []).map(h => {
-            const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
-            return { ...h, _id: finalId };
-          })
-        }));
-      } catch (e) {
-        console.error("Local load failed:", e);
-      } finally {
-        setIsInitialLoad(false);
+        const defaultData = {
+          todayMood: "😊 Thinking",
+          habits: guestHabits,
+          journals: [],
+          insights: ["Stay consistent!"],
+        };
+
+        setData(defaultData);
+        store.set(user?.id, defaultData);
       }
+
+      // Migration: Ensure all habits have unique _id as string
+      setData(prev => ({
+        ...prev,
+        habits: (prev.habits || []).map(h => {
+          const finalId = (h._id || h.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`;
+          return { ...h, _id: finalId };
+        })
+      }));
+      
+      setIsInitialLoad(false);
     }
 
     if (!loading) {
@@ -141,6 +164,7 @@ export default function HomePage() {
     if (!data || (data.todayMood === "" && !data.habits?.length)) return;
 
     try {
+      console.log("Saving data to local storage for user:", user?.id, data);
       store.set(user?.id, {
         todayMood: data.todayMood,
         habits: data.habits,

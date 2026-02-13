@@ -26,6 +26,18 @@ export default function JournalPage() {
     );
 
     async function loadJournals() {
+      // First, always try to load from local storage for immediate display
+      const saved = store.get(user?.id);
+      let localJournals = [];
+      if (saved?.journals) {
+        localJournals = (Array.isArray(saved.journals) ? saved.journals : []).map(j => ({
+          ...j,
+          _id: (j._id || j.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`
+        }));
+        setJournals(localJournals);
+      }
+      
+      // If we have a user and token, try backend to sync data
       if (user && token) {
         try {
           const res = await fetch(`${JOURNAL_API}`, {
@@ -34,31 +46,31 @@ export default function JournalPage() {
             }
           });
           if (!res.ok) {
-            console.warn("Backend unavailable - falling back to local storage");
+            console.warn("Backend unavailable, using local data");
           } else {
             const data = await res.json();
-            const loaded = (Array.isArray(data.journals) ? data.journals : []).map(j => ({
+            const backendJournals = (Array.isArray(data.journals) ? data.journals : []).map(j => ({
               ...j,
               _id: (j._id || j.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`
             }));
-            setJournals(loaded);
+            
+            // Merge backend journals with local journals
+            // For now, we'll prioritize backend but keep local if backend is empty
+            const finalJournals = backendJournals.length > 0 ? backendJournals : localJournals;
+            setJournals(finalJournals);
+            
+            // Save back to local storage
+            const updatedStore = { ...saved, journals: finalJournals };
+            store.set(user?.id, updatedStore);
+            
             setIsInitialLoad(false);
             return;
           }
         } catch (err) {
-          console.error("Load fail, trying local:", err);
+          console.error("Backend load failed, using local data:", err);
         }
       }
 
-      // Guest or Fallback
-      const saved = store.get(user?.id);
-      if (saved?.journals) {
-        const localMeta = (Array.isArray(saved.journals) ? saved.journals : []).map(j => ({
-          ...j,
-          _id: (j._id || j.id || "").toString() || `local-${Math.random().toString(36).substr(2, 9)}`
-        }));
-        setJournals(localMeta);
-      }
       setIsInitialLoad(false);
     }
 
