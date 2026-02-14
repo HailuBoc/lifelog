@@ -25,6 +25,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState("");
@@ -33,6 +34,17 @@ export default function LoginPage() {
 
   const debouncedEmail = useDebounce(email, 200);
   const debouncedPassword = useDebounce(password, 200);
+
+  // Load remembered email on mount
+  useEffect(() => {
+    const rememberedEmail = localStorage.getItem("lifelog_remembered_email");
+    const shouldRemember = localStorage.getItem("lifelog_remember_me") === "true";
+    
+    if (rememberedEmail && shouldRemember) {
+      setEmail(rememberedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   const announce = useCallback((msg) => {
     if (!liveRef.current) return;
@@ -97,10 +109,19 @@ export default function LoginPage() {
         return;
       }
 
-      // ✅ Store JWT for auth
-      localStorage.setItem("lifelog_token", data.token);
+      // ✅ Store JWT for auth based on remember me preference
+      if (rememberMe) {
+        localStorage.setItem("lifelog_token", data.token);
+        localStorage.setItem("lifelog_remembered_email", email.trim().toLowerCase());
+        localStorage.setItem("lifelog_remember_me", "true");
+      } else {
+        sessionStorage.setItem("lifelog_token", data.token);
+        // Clear any existing remember me data
+        localStorage.removeItem("lifelog_remembered_email");
+        localStorage.removeItem("lifelog_remember_me");
+      }
 
-      // Optional: store user info
+      // Optional: store user info (always in localStorage for now)
       localStorage.setItem(
         "lifelog_user",
         JSON.stringify({ id: data.id, name: data.name, email: data.email })
@@ -201,9 +222,11 @@ export default function LoginPage() {
             <input
               id="remember"
               type="checkbox"
-              className="w-4 h-4 rounded bg-slate-900/40 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 rounded bg-slate-900/40 border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-indigo-600 focus:ring-indigo-500"
             />
-            <label htmlFor="remember" className="text-slate-300">
+            <label htmlFor="remember" className="text-slate-300 cursor-pointer">
               Remember me
             </label>
           </div>
