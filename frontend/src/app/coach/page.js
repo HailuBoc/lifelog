@@ -20,6 +20,7 @@ export default function CoachPage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const endRef = useRef(null);
   const liveRef = useRef(null);
@@ -144,11 +145,18 @@ export default function CoachPage() {
   }
 
   async function clearConversation() {
-    if (!confirm("Clear the conversation?")) return;
+    setClearConfirmOpen(true);
+  }
+
+  async function confirmClearConversation() {
+    setClearConfirmOpen(false);
     setMessages([]);
-    store.set({ messages: [] });
-    
-    // sync with backend
+    try {
+      const existing = store.get(user?.id) || {};
+      existing.messages = [];
+      store.set(user?.id, existing);
+    } catch {}
+
     try {
       await fetch(`${API_URL}/api/coach`, {
         method: "DELETE",
@@ -187,6 +195,28 @@ export default function CoachPage() {
             </button>
           </div>
         </header>
+
+        {clearConfirmOpen && (
+          <div className="mb-4 rounded-xl border border-slate-700 bg-slate-900/60 p-3 flex items-center justify-between gap-3">
+            <div className="text-sm text-slate-200">
+              Clear the conversation?
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setClearConfirmOpen(false)}
+                className="px-3 py-1 text-xs rounded-md bg-slate-700 hover:bg-slate-600 text-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmClearConversation}
+                className="px-3 py-1 text-xs rounded-md bg-rose-600 hover:bg-rose-500 text-white"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="bg-gradient-to-b from-slate-900/60 to-slate-800/50 rounded-2xl border border-slate-700 p-4 shadow-neu">
           <div
