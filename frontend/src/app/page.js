@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { store } from "@/lib/storage";
@@ -27,19 +27,29 @@ export default function HomePage() {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [coachMenuOpen, setCoachMenuOpen] = useState(false);
   const [userStats, setUserStats] = useState({
     totalJournalEntries: 0,
     completedHabits: 0,
     currentStreak: 0
   });
+  const [coachMessages, setCoachMessages] = useState([]);
+  const [coachInput, setCoachInput] = useState("");
+  const [coachSending, setCoachSending] = useState(false);
   const statusElRef = useRef(null);
   const profileMenuRef = useRef(null);
+  const coachMenuRef = useRef(null);
+  const coachRootRef = useRef(null);
+  const coachEndRef = useRef(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
         setProfileMenuOpen(false);
+      }
+      if (coachRootRef.current && !coachRootRef.current.contains(event.target)) {
+        setCoachMenuOpen(false);
       }
     };
 
@@ -48,6 +58,30 @@ export default function HomePage() {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Load coach messages when coach menu opens
+  useEffect(() => {
+    if (coachMenuOpen && user) {
+      const saved = store.get(user?.id);
+      const defaultMessages = [
+        {
+          id: 1,
+          from: "ai",
+          text: "Hey! How are you feeling today?",
+          date: new Date().toISOString(),
+        }
+      ];
+      let localMessages = saved?.messages?.length ? saved.messages : defaultMessages;
+      setCoachMessages(localMessages);
+    }
+  }, [coachMenuOpen, user]);
+
+  // Auto-scroll coach messages
+  useEffect(() => {
+    if (coachEndRef.current) {
+      coachEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [coachMessages]);
 
   // Fetch user stats when profile menu opens
   useEffect(() => {
@@ -89,6 +123,67 @@ export default function HomePage() {
   };
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+  async function postCoachMessage(text) {
+    if (!text.trim()) return;
+    const msg = {
+      id: Date.now(),
+      from: "user",
+      text: text.trim(),
+      date: new Date().toISOString(),
+    };
+    setCoachMessages((m) => [...m, msg]);
+    setCoachInput("");
+    setCoachSending(true);
+
+    try {
+      const response = await fetch(`${API_URL}/api/coach`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ newMessage: msg }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Failed to get response from AI");
+      }
+
+      const ai = {
+        id: Date.now() + 1,
+        from: "ai",
+        text: data.reply || "I'm sorry, I couldn't generate a response. Please try again.",
+        date: new Date().toISOString(),
+      };
+      setCoachMessages((m) => [...m, ai]);
+    } catch (err) {
+      console.error("Error:", err);
+      const ai = {
+        id: Date.now() + 1,
+        from: "ai",
+        text: "Sorry, I'm having trouble connecting right now. Please try again later.",
+        date: new Date().toISOString(),
+      };
+      setCoachMessages((m) => [...m, ai]);
+    } finally {
+      setCoachSending(false);
+    }
+  }
+
+  const handleCoachKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+      postCoachMessage(coachInput);
+    }
+  };
+
   const API_BASE = `${API_URL}/api/lifelog`;
 
   const completedHabitsCount = (data?.habits || []).filter((h) => h?.completed).length;
@@ -945,15 +1040,109 @@ export default function HomePage() {
           </div>
         </main>
       </div>
+
+      <div ref={coachRootRef} className="fixed bottom-24 right-6 z-[80] flex flex-col items-end gap-4">
+        {coachMenuOpen && (
+          <div
+            ref={coachMenuRef}
+            className="w-80 h-[450px] bg-slate-900 rounded-2xl shadow-2xl border border-slate-800 flex flex-col overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 bg-indigo-600 text-white flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                <span className="text-lg" aria-hidden="true">🤖</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm">AI Coach</h3>
+                <p className="text-[10px] text-white/80">Always active to help you grow</p>
+              </div>
+              <button
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  setCoachMenuOpen(false);
+                }}
+                className="ml-auto text-white/80 hover:text-white"
+                aria-label="Close AI Coach"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/50">
+              {coachMessages.length === 0 ? (
+                <div className="text-center text-slate-400 py-6">
+                  No messages yet — say hi 👋
+                </div>
+              ) : (
+                coachMessages.map((m, i) => {
+                  const isAI = m.from === "ai";
+                  const key = m.id || m._id || `${i}-${new Date(m.date || Date.now()).getTime()}`;
+                  return (
+                    <div
+                      key={key}
+                      className={`flex flex-col gap-1 max-w-[85%] ${isAI ? "" : "ml-auto"}`}
+                    >
+                      <div
+                        className={`${
+                          isAI
+                            ? "bg-slate-800 text-slate-100 rounded-2xl rounded-tl-none border border-slate-800"
+                            : "bg-indigo-600 text-white rounded-2xl rounded-tr-none"
+                        } p-3 text-sm shadow-sm`}
+                      >
+                        {m.text}
+                      </div>
+                      <span className={`text-[10px] text-slate-400 ${isAI ? "ml-1" : "text-right mr-1"}`}>
+                        {m.date ? new Date(m.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={coachEndRef} />
+            </div>
+
+            <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+              <input
+                className="flex-1 bg-slate-800 border-none rounded-full px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500/50 text-slate-100"
+                placeholder="Ask your coach..."
+                type="text"
+                value={coachInput}
+                onChange={(e) => setCoachInput(e.target.value)}
+              />
+              <button
+                className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-md disabled:opacity-60"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!user) {
+                    router.push("/login");
+                    return;
+                  }
+                  if (coachSending) return;
+                  postCoachMessage(coachInput);
+                }}
+                disabled={coachSending}
+                aria-label="Send message"
+                type="button"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <button
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setCoachMenuOpen((v) => !v);
+          }}
+          className="w-14 h-14 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform active:scale-95"
+          aria-label="Open AI Coach"
+          type="button"
+        >
+          <span className="text-2xl" aria-hidden="true">🤖</span>
+        </button>
+      </div>
     </div>
   );
-}
-
-{
-  /* Main column */
-}
-// ...existing code...
-
-{
-  /* Recent Journals (animated list) */
 }
