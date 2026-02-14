@@ -11,7 +11,7 @@ connectDB();
 const app = express();
 app.use(cors());
 app.use(express.json());
-
+ 
 // API routes
 app.use("/api/lifelog", lifelogRoutes);
 app.use("/api/coach", coachRouter);
