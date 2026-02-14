@@ -10,7 +10,8 @@ export default function useAuth(redirectIfUnauthenticated = true) {
   const router = useRouter();
 
   useEffect(() => {
-    const storedToken = localStorage.getItem("lifelog_token");
+    // Check sessionStorage first (for non-remembered sessions), then localStorage
+    const storedToken = sessionStorage.getItem("lifelog_token") || localStorage.getItem("lifelog_token");
     const storedUser = localStorage.getItem("lifelog_user");
 
     if (storedToken && storedUser) {
@@ -27,8 +28,9 @@ export default function useAuth(redirectIfUnauthenticated = true) {
   }, [redirectIfUnauthenticated, router, loading]);
 
   const logout = () => {
-    // Only remove auth tokens, keep user data in localStorage for persistence
+    // Remove auth tokens from both storage locations
     localStorage.removeItem("lifelog_token");
+    sessionStorage.removeItem("lifelog_token");
     localStorage.removeItem("lifelog_user");
     setUser(null);
     setToken(null);

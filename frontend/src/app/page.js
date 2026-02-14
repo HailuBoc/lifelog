@@ -6,6 +6,7 @@ import { Sun, Moon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { store } from "@/lib/storage";
+import { FaUser } from "react-icons/fa";
 
 // ...existing code...
 
@@ -21,12 +22,71 @@ export default function HomePage() {
   const [theme, setTheme] = useState("light");
   const [newJournal, setNewJournal] = useState("");
   const [moodDraft, setMoodDraft] = useState("");
-  const [statusRef, setStatusRef] = useState(null);
   const [newHabit, setNewHabit] = useState("");
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [userStats, setUserStats] = useState({
+    totalJournalEntries: 0,
+    completedHabits: 0,
+    currentStreak: 0
+  });
   const statusElRef = useRef(null);
+  const profileMenuRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Fetch user stats when profile menu opens
+  useEffect(() => {
+    if (profileMenuOpen && user) {
+      // Use existing data from the main page state for consistency
+      const totalJournalEntries = data?.journals?.length || 0;
+      const completedHabits = data?.habits?.filter(h => h.completed).length || 0;
+      const currentStreak = calculateStreak(data?.habits || []);
+      
+      setUserStats({
+        totalJournalEntries,
+        completedHabits,
+        currentStreak
+      });
+    }
+  }, [profileMenuOpen, user, data]);
+
+  const calculateStreak = (habits) => {
+    const today = new Date();
+    let streak = 0;
+    
+    for (let i = 0; i < 30; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(today.getDate() - i);
+      const dateStr = checkDate.toISOString().split('T')[0];
+      
+      const hasCompletedHabit = habits.some(h => 
+        h.completed && h.date && h.date.startsWith(dateStr)
+      );
+      
+      if (hasCompletedHabit) {
+        streak++;
+      } else if (i > 0) {
+        break;
+      }
+    }
+    
+    return streak;
+  };
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   const API_BASE = `${API_URL}/api/lifelog`;
@@ -197,10 +257,10 @@ export default function HomePage() {
   }
 
   function announce(msg) {
-    if (statusRef.current) {
-      statusRef.current.textContent = msg;
+    if (statusElRef.current) {
+      statusElRef.current.textContent = msg;
       setTimeout(() => {
-        if (statusRef.current) statusRef.current.textContent = "";
+        if (statusElRef.current) statusElRef.current.textContent = "";
       }, 1200);
     }
   }
@@ -211,6 +271,10 @@ export default function HomePage() {
 
   function updateMood() {
     if (!moodDraft.trim()) return;
+    if (!user || !token) {
+      announce("Please log in to update your mood");
+      return;
+    }
     setData((d) => ({ ...d, todayMood: moodDraft.trim() }));
     fetch(`${API_BASE}/mood`, {
       method: "PUT",
@@ -243,6 +307,10 @@ export default function HomePage() {
 
   function addJournalEntry() {
     if (!newJournal.trim()) return;
+    if (!user || !token) {
+      announce("Please log in to add journal entries");
+      return;
+    }
     const optimistic = {
       id: `local:${Date.now()}`,
       date: new Date().toISOString(),
@@ -273,6 +341,10 @@ export default function HomePage() {
   }
 
   function removeJournalEntry(id) {
+    if (!user || !token) {
+      announce("Please log in to manage journal entries");
+      return;
+    }
     if (String(id).startsWith("local:")) {
       setData((d) => ({
         ...d,
@@ -298,6 +370,10 @@ export default function HomePage() {
   }
 
   function toggleHabit(id) {
+    if (!user || !token) {
+      announce("Please log in to manage habits");
+      return;
+    }
     fetch(`${API_BASE}/habit/${id}/toggle`, { 
       method: "PUT",
       headers: {
@@ -316,6 +392,10 @@ export default function HomePage() {
   }
 
   function setHabitCategory(id) {
+    if (!user || !token) {
+      announce("Please log in to manage habits");
+      return;
+    }
     const cat = prompt("Set habit category (e.g. Work, Personal):");
     if (cat === null) return;
     setData((d) => ({
@@ -375,16 +455,68 @@ export default function HomePage() {
                 className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm rounded-md shadow-sm hover:opacity-95 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 aria-label="Create an account"
               >
-                ➕ Sign up
+                 Sign up
               </Link>
             </>
           ) : (
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1 bg-rose-600 hover:bg-rose-500 rounded-md text-sm text-white"
-            >
-              Log out
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                className="p-2 rounded-md text-slate-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                aria-label="User menu"
+                aria-expanded={profileMenuOpen}
+              >
+                <FaUser className="text-slate-300" />
+              </button>
+              
+              {/* Dropdown Menu */}
+              {profileMenuOpen && (
+                <div ref={profileMenuRef} className="absolute right-0 mt-2 w-80 bg-slate-800 border border-slate-700 rounded-lg shadow-lg z-50 p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <FaUser className="text-slate-300 text-lg" />
+                      <div>
+                        <div className="text-slate-100 font-medium">{user?.name || 'User'}</div>
+                        <div className="text-slate-400 text-sm">{user?.email || 'user@example.com'}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setProfileMenuOpen(false)}
+                      className="text-slate-400 hover:text-slate-200"
+                    >
+                      <span className="material-symbols-outlined">close</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-slate-400 text-sm">Journal Entries</span>
+                      <span className="text-slate-100 font-medium">{userStats.totalJournalEntries}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-slate-400 text-sm">Completed Habits</span>
+                      <span className="text-slate-100 font-medium">{userStats.completedHabits}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-slate-400 text-sm">Current Streak</span>
+                      <span className="text-slate-100 font-medium">{userStats.currentStreak} days</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-slate-700">
+                    <button
+                      onClick={() => {
+                        handleLogout();
+                        setProfileMenuOpen(false);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors"
+                    >
+                      Log out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </header>
@@ -463,6 +595,11 @@ export default function HomePage() {
                   <input
                     value={moodDraft}
                     onChange={(e) => setMoodDraft(e.target.value)}
+                    onFocus={() => {
+                      if (!user) {
+                        router.push("/login");
+                      }
+                    }}
                     placeholder="Update mood (e.g., 😊 Excited)"
                     className="flex-1 rounded-md bg-slate-900/40 border border-slate-700 p-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                     aria-label="Update mood"
@@ -575,6 +712,10 @@ export default function HomePage() {
                       <div className="flex items-center gap-2 mt-2 sm:mt-0">
                         <button
                           onClick={async () => {
+                            if (!user) {
+                              router.push("/login");
+                              return;
+                            }
                             if (!h._id) return;
                             const hId = h._id.toString();
                             // Optimistic Update
@@ -594,9 +735,12 @@ export default function HomePage() {
                                 ...prev,
                                 habits: (prev.habits || []).map(item => item._id?.toString() === hId ? { ...item, _toggling: false } : item)
                               }));
-                            }, 300);
+                            }, 500);
 
-                            if (!user || !token) return;
+                            if (!user || !token) {
+                              announce("Local update saved");
+                              return;
+                            }
 
                             try {
                               const res = await fetch(
@@ -635,6 +779,10 @@ export default function HomePage() {
 
                         <button
                           onClick={async () => {
+                            if (!user) {
+                              router.push("/login");
+                              return;
+                            }
                             if (!h._id) return;
                             const hId = h._id.toString();
                             // Optimistic delete
@@ -699,8 +847,17 @@ export default function HomePage() {
               <textarea
                 value={newJournal}
                 onChange={(e) => setNewJournal(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                    if (!user) {
+                      router.push("/login");
+                      return;
+                    }
+                    addJournalEntry();
+                  }
+                }}
                 placeholder="Write about your day..."
-                className="w-full min-h-[90px] rounded-md p-3 bg-slate-900/40 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full min-h-[90px] rounded-md p-3 bg-slate-900/40 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 aria-label="New journal entry"
               />
               <div className="mt-3 flex justify-between items-center gap-2">
@@ -715,7 +872,13 @@ export default function HomePage() {
                     Clear
                   </button>
                   <button
-                    onClick={addJournalEntry}
+                    onClick={() => {
+                      if (!user) {
+                        router.push("/login");
+                        return;
+                      }
+                      addJournalEntry();
+                    }}
                     className="px-4 py-2 rounded-md bg-gradient-to-r from-indigo-600 to-purple-600 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-transform active:scale-95"
                   >
                     Add Entry
@@ -762,8 +925,14 @@ export default function HomePage() {
                         {formatEntryDate(j)}
                       </div>
                       <button
-                        onClick={() => removeJournalEntry(j._id)}
-                        className="text-xs px-2 py-1 rounded-md bg-rose-600 hover:bg-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                        onClick={() => {
+                          if (!user) {
+                            router.push("/login");
+                            return;
+                          }
+                          removeJournalEntry(j._id);
+                        }}
+                        className="text-xs px-2 py-1 rounded-md bg-rose-600 hover:bg-rose-500 text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
                       >
                         Delete
                       </button>

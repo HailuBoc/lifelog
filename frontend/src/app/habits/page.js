@@ -253,8 +253,6 @@ export default function HabitsPage() {
     );
   }
 
-  // Guest Mode enabled
-
   return (
     <section className="max-w-4xl mx-auto px-4 py-8">
       <div className="bg-gradient-to-b from-slate-800/60 to-slate-900/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-700 shadow-neu">
@@ -269,43 +267,23 @@ export default function HabitsPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              href="/habits/new"
+            <button
+              onClick={() => {
+                if (!user) {
+                  router.push("/login");
+                  return;
+                }
+              }}
               className="hidden sm:inline-flex items-center gap-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
               ➕ Add New Habit
-            </Link>
+            </button>
           </div>
         </header>
 
         {/* Add Form */}
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
-          <input
-            ref={inputRef}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") addHabit();
-              if (e.key === "Escape") setNewName("");
-            }}
-            placeholder="Habit name (e.g., 'Meditate 10 mins')"
-            aria-label="New habit name"
-            className="sm:col-span-2 w-full rounded-md p-3 bg-slate-900/50 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <div className="flex gap-2">
-            <button
-              onClick={() => setNewName("")}
-              className="px-3 py-2 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              Clear
-            </button>
-            <button
-              onClick={addHabit}
-              className="px-3 py-2 rounded-md bg-gradient-to-r from-indigo-600 to-purple-600 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              Add
-            </button>
-          </div>
+          {/* Form content would go here if needed */}
         </div>
 
         {/* Progress */}
@@ -365,7 +343,13 @@ export default function HabitsPage() {
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => toggleHabit(h._id)}
+                  onClick={() => {
+                    if (!user) {
+                      router.push("/login");
+                      return;
+                    }
+                    toggleHabit(h._id);
+                  }}
                   aria-pressed={h.completed}
                   className={`px-3 py-1 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors duration-200 ${
                     h.completed
@@ -377,7 +361,13 @@ export default function HabitsPage() {
                 </button>
 
                 <button
-                  onClick={() => removeHabit(h._id)}
+                  onClick={() => {
+                    if (!user) {
+                      router.push("/login");
+                      return;
+                    }
+                    removeHabit(h._id);
+                  }}
                   aria-label={`Remove ${h.name}`}
                   className="px-2 py-1 text-xs rounded-md bg-rose-600 hover:bg-rose-500 text-white focus:outline-none focus:ring-2 focus:ring-rose-400"
                 >

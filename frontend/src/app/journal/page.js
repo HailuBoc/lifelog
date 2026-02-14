@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { store } from "@/lib/storage";
 
 export default function JournalPage() {
+  const router = useRouter();
   const { user, token, loading } = useAuth(false);
   const [journals, setJournals] = useState([]);
   const [draft, setDraft] = useState("");
@@ -185,7 +187,13 @@ export default function JournalPage() {
   }
 
   function handleKeyDown(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") addJournalEntry();
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+      addJournalEntry();
+    }
   }
 
   if (loading) {
@@ -195,8 +203,6 @@ export default function JournalPage() {
       </div>
     );
   }
-
-  // Guest Mode enabled
 
   return (
     <section className="max-w-4xl mx-auto px-4 py-8">
@@ -251,7 +257,13 @@ export default function JournalPage() {
               Clear
             </button>
             <button
-              onClick={addJournalEntry}
+              onClick={() => {
+                if (!user) {
+                  router.push("/login");
+                  return;
+                }
+                addJournalEntry();
+              }}
               className="px-4 py-2 rounded-md bg-gradient-to-r from-indigo-600 to-purple-600 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
               Add Entry
@@ -287,7 +299,13 @@ export default function JournalPage() {
                 </div>
 
                 <button
-                  onClick={() => removeJournalEntry(entry._id)}
+                  onClick={() => {
+                    if (!user) {
+                      router.push("/login");
+                      return;
+                    }
+                    removeJournalEntry(entry._id);
+                  }}
                   className="text-xs px-2 py-1 rounded-md bg-rose-600 hover:bg-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-400"
                 >
                   Delete
