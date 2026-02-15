@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 /* debounce hook for performance */
@@ -23,6 +23,8 @@ function useDebounce(value, delay) {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get("redirect") || "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
@@ -129,8 +131,8 @@ export default function LoginPage() {
 
       announce("Login successful!");
       
-      // Fast redirect
-      setTimeout(() => router.push("/"), 500);
+      // Fast redirect to the specified URL or home
+      setTimeout(() => router.push(redirectUrl), 500);
     } catch (err) {
       console.error("Login error:", err);
       if (err.name === 'AbortError') {
@@ -144,7 +146,7 @@ export default function LoginPage() {
       setSaving(false);
       setIsLoading(false);
     }
-  }, [validate, announce, email, password, router]);
+  }, [validate, announce, email, password, router, redirectUrl]);
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4 sm:p-8 bg-gradient-to-b from-slate-900 via-slate-950 to-black text-slate-100">

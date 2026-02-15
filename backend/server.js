@@ -4,6 +4,7 @@ import cors from "cors";
 import connectDB from "./config/db.js";
 import lifelogRoutes from "./routes/lifelogRoutes.js";
 import journalRoutes from "./routes/journalRoutes.js";
+import taskRoutes from "./routes/taskRoutes.js";
 import coachRouter from "./routes/coach.js";
 import authRoutes from "./routes/authRoutes.js";
  
@@ -16,6 +17,7 @@ app.use(express.json());
 // API routes
 app.use("/api/lifelog", lifelogRoutes);
 app.use("/api/journals", journalRoutes);
+app.use("/api/tasks", taskRoutes);
 app.use("/api/coach", coachRouter);
 app.use("/api/auth", authRoutes);
 

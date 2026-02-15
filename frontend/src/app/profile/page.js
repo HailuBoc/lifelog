@@ -13,7 +13,8 @@ export default function ProfilePage() {
   const [stats, setStats] = useState({
     totalJournalEntries: 0,
     completedHabits: 0,
-    currentStreak: 0
+    currentStreak: 0,
+    totalTasks: 0
   });
   const [formData, setFormData] = useState({
     name: "",
@@ -43,15 +44,23 @@ export default function ProfilePage() {
         });
         const habitData = await habitRes.json();
         
+        // Fetch tasks
+        const taskRes = await fetch(`${API_URL}/api/tasks`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const taskData = await taskRes.json();
+        
         // Calculate stats
         const totalJournalEntries = journalData.length || 0;
         const completedHabits = habitData.filter(h => h.completed).length || 0;
         const currentStreak = calculateStreak(habitData);
+        const totalTasks = taskData.length || 0;
         
         setStats({
           totalJournalEntries,
           completedHabits,
-          currentStreak
+          currentStreak,
+          totalTasks
         });
       } catch (error) {
         console.error("Failed to fetch stats:", error);
@@ -280,6 +289,10 @@ export default function ProfilePage() {
                   <div className="bg-slate-900/40 rounded-lg p-6 border border-slate-700">
                     <h3 className="text-lg font-medium text-slate-300 mb-4">Quick Stats</h3>
                     <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400">Total Tasks</span>
+                        <span className="text-slate-100 font-medium">{stats.totalTasks}</span>
+                      </div>
                       <div className="flex justify-between items-center">
                         <span className="text-slate-400">Total Journal Entries</span>
                         <span className="text-slate-100 font-medium">{stats.totalJournalEntries}</span>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Sun, Moon, Send } from "lucide-react";
+import { Sun, Moon, Send, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/hooks/useAuth";
 import { store } from "@/lib/storage";
@@ -31,8 +31,10 @@ export default function HomePage() {
   const [userStats, setUserStats] = useState({
     totalJournalEntries: 0,
     completedHabits: 0,
-    currentStreak: 0
+    currentStreak: 0,
+    totalTasks: 0
   });
+  const [sidebarTaskCount, setSidebarTaskCount] = useState(0);
   const [coachMessages, setCoachMessages] = useState([]);
   const [coachInput, setCoachInput] = useState("");
   const [coachSending, setCoachSending] = useState(false);
@@ -86,6 +88,25 @@ export default function HomePage() {
     }
   }, [coachMenuOpen, user]);
 
+  // Fetch tasks count for sidebar
+  useEffect(() => {
+    if (!token) return;
+    
+    const fetchTaskCount = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/tasks`, {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        const tasks = await response.json();
+        setSidebarTaskCount(tasks.length || 0);
+      } catch (error) {
+        console.error("Failed to fetch task count:", error);
+      }
+    };
+    
+    fetchTaskCount();
+  }, [token]);
+
   // Auto-scroll coach messages
   useEffect(() => {
     if (coachEndRef.current) {
@@ -95,19 +116,34 @@ export default function HomePage() {
 
   // Fetch user stats when profile menu opens
   useEffect(() => {
-    if (profileMenuOpen && user) {
-      // Use existing data from the main page state for consistency
-      const totalJournalEntries = data?.journals?.length || 0;
-      const completedHabits = data?.habits?.filter(h => h.completed).length || 0;
-      const currentStreak = calculateStreak(data?.habits || []);
+    if (profileMenuOpen && user && token) {
+      const fetchStats = async () => {
+        try {
+          // Fetch tasks
+          const taskRes = await fetch(`${API_URL}/api/tasks`, {
+            headers: { "Authorization": `Bearer ${token}` }
+          });
+          const taskData = await taskRes.json();
+          const totalTasks = taskData.length || 0;
+          
+          const totalJournalEntries = journalsPagination.total || 0;
+          const completedHabits = data?.habits?.filter(h => h.completed).length || 0;
+          const currentStreak = calculateStreak(data?.habits || []);
+          
+          setUserStats({
+            totalJournalEntries,
+            completedHabits,
+            currentStreak,
+            totalTasks
+          });
+        } catch (error) {
+          console.error("Failed to fetch task stats:", error);
+        }
+      };
       
-      setUserStats({
-        totalJournalEntries,
-        completedHabits,
-        currentStreak
-      });
+      fetchStats();
     }
-  }, [profileMenuOpen, user, data]);
+  }, [profileMenuOpen, user, token, data, journalsPagination.total]);
 
   const calculateStreak = (habits) => {
     const today = new Date();
@@ -629,11 +665,15 @@ export default function HomePage() {
                       onClick={() => setProfileMenuOpen(false)}
                       className="text-slate-400 hover:text-slate-200"
                     >
-                      <span className="material-symbols-outlined">close</span>
+                      <X className="w-5 h-5" />
                     </button>
                   </div>
 
                   <div className="space-y-3">
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-slate-400 text-sm">Total Tasks</span>
+                      <span className="text-slate-100 font-medium">{userStats.totalTasks}</span>
+                    </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-slate-400 text-sm">Journal Entries</span>
                       <span className="text-slate-100 font-medium">{userStats.totalJournalEntries}</span>
@@ -714,6 +754,18 @@ export default function HomePage() {
                 className="block p-2 rounded-md hover:bg-slate-700/60"
               >
                 ⏱️ Habits
+              </Link>
+            </li>
+            <li>
+              <Link href="/tasks"
+               className="flex items-center justify-between p-2 rounded-md hover:bg-slate-700/60"
+                > 
+                <span>🗂 Tasks</span>
+                {sidebarTaskCount > 0 && (
+                  <span className="px-2 py-0.5 bg-indigo-600 text-white text-xs rounded-full">
+                    {sidebarTaskCount}
+                  </span>
+                )}
               </Link>
             </li>
           </ul>
