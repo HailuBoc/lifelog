@@ -3,8 +3,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "LifeLog | AI Life Tracker",
-  description: "Reflect, track, and grow with your personal AI life assistant.",
+  title: "Bruh LifeLog | AI Life Tracker",
+  description: "Reflect, track, and grow with Bruh.",
 };
 
 export default function RootLayout({ children }) {
