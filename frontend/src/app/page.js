@@ -579,7 +579,7 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 backdrop-blur-sm bg-slate-900/50 border-b border-slate-800 rounded-b-md p-3 mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="text-indigo-300 text-lg font-semibold">
-            🧠 LifeLog
+            🧠Bruh  LifeLog
           </div>
           <div className="hidden md:inline text-slate-300 text-sm">
             Reflect • Track • Grow
