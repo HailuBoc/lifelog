@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Sun, Moon, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -36,6 +36,16 @@ export default function HomePage() {
   const [coachMessages, setCoachMessages] = useState([]);
   const [coachInput, setCoachInput] = useState("");
   const [coachSending, setCoachSending] = useState(false);
+  
+  // Pagination state for journals
+  const [journalsPagination, setJournalsPagination] = useState({
+    journals: [],
+    total: 0,
+    totalPages: 0,
+    currentPage: 1,
+    loading: false
+  });
+  
   const statusElRef = useRef(null);
   const profileMenuRef = useRef(null);
   const coachMenuRef = useRef(null);
@@ -186,6 +196,35 @@ export default function HomePage() {
 
   const API_BASE = `${API_URL}/api/lifelog`;
 
+  // Fetch journals with pagination
+  const fetchJournals = useCallback(async (page = 1, limit = 10) => {
+    if (!user || !token) return;
+    
+    setJournalsPagination(prev => ({ ...prev, loading: true }));
+    
+    try {
+      const response = await fetch(`${API_URL}/api/journals?page=${page}&limit=${limit}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch journals');
+      
+      const data = await response.json();
+      setJournalsPagination({
+        journals: data.journals || [],
+        total: data.total || 0,
+        totalPages: data.totalPages || 0,
+        currentPage: data.currentPage || 1,
+        loading: false
+      });
+    } catch (error) {
+      console.error('Error fetching journals:', error);
+      setJournalsPagination(prev => ({ ...prev, loading: false }));
+    }
+  }, [user, token, API_URL]);
+
   const completedHabitsCount = (data?.habits || []).filter((h) => h?.completed).length;
 
   useEffect(() => {
@@ -209,6 +248,13 @@ export default function HomePage() {
       );
     } catch {}
   }, []);
+
+  // Fetch journals when user is available
+  useEffect(() => {
+    if (user && token) {
+      fetchJournals(1, 10); // Fetch first page with default limit
+    }
+  }, [user, token]);
 
   // Fetch user lifelog when user is resolved
   useEffect(() => {
@@ -431,6 +477,8 @@ export default function HomePage() {
             j.id === optimistic.id ? savedEntry : j
           ),
         }));
+        // Refresh journals pagination to show the new entry
+        fetchJournals(journalsPagination.currentPage, 10);
       })
       .catch(() => {});
   }
@@ -454,12 +502,14 @@ export default function HomePage() {
         "Authorization": `Bearer ${token}`
       }
     })
-      .then(() =>
+      .then(() => {
         setData((d) => ({
           ...d,
           journals: d.journals.filter((j) => (j._id ?? j.id) !== id),
-        }))
-      )
+        }));
+        // Refresh journals pagination after deletion
+        fetchJournals(journalsPagination.currentPage, 10);
+      })
       .catch(() => {});
     announce("Journal entry removed");
   }
@@ -1004,10 +1054,14 @@ export default function HomePage() {
                 Recent Journal Entries
               </h2>
               <div className="space-y-4">
-                {data.journals.length === 0 && (
+                {journalsPagination.loading ? (
+                  <div className="text-slate-400 text-center py-4">
+                    Loading journals...
+                  </div>
+                ) : journalsPagination.journals.length === 0 ? (
                   <div className="text-slate-400">No journal entries yet.</div>
-                )}
-                {data.journals.map((j, idx) => (
+                ) : (
+                  journalsPagination.journals.map((j, idx) => (
                   <article
                     key={`${j._id || j.id || "local"}-${idx}`}
                     role="article"
@@ -1034,9 +1088,59 @@ export default function HomePage() {
                     </div>
                     <p className="mt-2 text-slate-100">{j.text}</p>
                   </article>
-                ))}
+                  ))
+                )}
               </div>
             </section>
+
+            {/* Pagination Controls */}
+            {journalsPagination.totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <button
+                  onClick={() => fetchJournals(journalsPagination.currentPage - 1, 10)}
+                  disabled={journalsPagination.currentPage === 1 || journalsPagination.loading}
+                  className="px-4 py-2 rounded-md bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  Previous
+                </button>
+                
+                {/* Page numbers when totalPages <= 5 */}
+                {journalsPagination.totalPages <= 5 && (
+                  <div className="flex gap-1">
+                    {Array.from({ length: journalsPagination.totalPages }, (_, i) => i + 1).map(pageNum => (
+                      <button
+                        key={pageNum}
+                        onClick={() => fetchJournals(pageNum, 10)}
+                        disabled={journalsPagination.loading}
+                        className={`w-8 h-8 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                          pageNum === journalsPagination.currentPage
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-700 hover:bg-slate-600 text-slate-100 disabled:opacity-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                <button
+                  onClick={() => fetchJournals(journalsPagination.currentPage + 1, 10)}
+                  disabled={journalsPagination.currentPage === journalsPagination.totalPages || journalsPagination.loading}
+                  className="px-4 py-2 rounded-md bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+            
+            {/* Page info */}
+            {journalsPagination.total > 0 && (
+              <div className="text-center text-slate-400 text-sm mt-2">
+                Showing {journalsPagination.journals.length} of {journalsPagination.total} entries
+                {journalsPagination.totalPages > 1 && ` (Page ${journalsPagination.currentPage} of ${journalsPagination.totalPages})`}
+              </div>
+            )}
           </div>
         </main>
       </div>

@@ -33,6 +33,12 @@ function formatDateKey(d) {
   return dt.toISOString().split("T")[0];
 }
 
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
 /* Hydration-safe sparkline bar chart */
 function SparkBars({ points = [] }) {
   const [isClient, setIsClient] = useState(false);
@@ -135,7 +141,6 @@ function generateInsights(journals = [], habits = [], rangeDays = 14) {
 export default function AnalyticsPage() {
   const { user, token, loading } = useAuth(false);
   const [data, setData] = useState({ journals: [], habits: [], insights: [] });
-  const [rangeDays, setRangeDays] = useState(14);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isClient, setIsClient] = useState(false);
   const announceRef = useRef(null);
@@ -224,24 +229,56 @@ export default function AnalyticsPage() {
     }, 1200);
   }
 
-  // --- chart data ---
-  const { labels, counts } = useMemo(() => {
-    const today = new Date();
-    const map = new Map();
-    const labels = [];
-    for (let i = 0; i < rangeDays; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - (rangeDays - 1 - i));
-      const key = formatDateKey(d);
-      labels.push(key.slice(5));
-      map.set(key, 0);
-    }
-    data.journals?.forEach((j) => {
-      const key = formatDateKey(j.date || j.createdAt || Date.now());
-      if (map.has(key)) map.set(key, map.get(key) + 1);
+  // --- per-day chart data (no interval buckets) ---
+  const { labels, journalCounts, habitCompletedCounts } = useMemo(() => {
+    const journals = Array.isArray(data.journals) ? data.journals : [];
+    const habits = Array.isArray(data.habits) ? data.habits : [];
+
+    const dateKeys = new Set();
+    journals.forEach((j) => dateKeys.add(formatDateKey(j.date || j.createdAt || Date.now())));
+    habits.forEach((h) => {
+      if (h?.date) dateKeys.add(formatDateKey(h.date));
     });
-    return { labels, counts: Array.from(map.values()) };
-  }, [data.journals, rangeDays]);
+
+    if (dateKeys.size === 0) {
+      return { labels: [], journalCounts: [], habitCompletedCounts: [] };
+    }
+
+    const sorted = Array.from(dateKeys).sort();
+    const minKey = sorted[0];
+    const maxKey = sorted[sorted.length - 1];
+
+    const start = new Date(`${minKey}T00:00:00.000Z`);
+    const end = new Date(`${maxKey}T00:00:00.000Z`);
+
+    const journalMap = new Map();
+    const habitCompletedMap = new Map();
+
+    for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
+      const key = formatDateKey(d);
+      journalMap.set(key, 0);
+      habitCompletedMap.set(key, 0);
+    }
+
+    journals.forEach((j) => {
+      const key = formatDateKey(j.date || j.createdAt || Date.now());
+      if (journalMap.has(key)) journalMap.set(key, journalMap.get(key) + 1);
+    });
+
+    // Count habits completed per day based on habit.date (last completion date)
+    habits.forEach((h) => {
+      if (!h?.completed || !h?.date) return;
+      const key = formatDateKey(h.date);
+      if (habitCompletedMap.has(key)) {
+        habitCompletedMap.set(key, habitCompletedMap.get(key) + 1);
+      }
+    });
+
+    const labels = Array.from(journalMap.keys()).map((k) => k.slice(5));
+    const journalCounts = Array.from(journalMap.values());
+    const habitCompletedCounts = Array.from(habitCompletedMap.values());
+    return { labels, journalCounts, habitCompletedCounts };
+  }, [data.journals, data.habits]);
 
   const habitStats = useMemo(() => {
     const habits = Array.isArray(data.habits) ? data.habits : [];
@@ -284,16 +321,6 @@ export default function AnalyticsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-300">Range</label>
-          <select
-            value={rangeDays}
-            onChange={(e) => setRangeDays(Number(e.target.value))}
-            className="bg-slate-900/60 border border-slate-700 text-slate-100 rounded-md px-2 py-1 text-sm"
-          >
-            <option value={7}>7d</option>
-            <option value={14}>14d</option>
-            <option value={30}>30d</option>
-          </select>
           <button
             onClick={exportJSON}
             className="px-3 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm"
@@ -316,11 +343,11 @@ export default function AnalyticsPage() {
             <span>Journal Activity</span>
             <span className="text-xs text-slate-400">Entries per day</span>
           </h2>
-          <SparkBars points={counts} />
+          <SparkBars points={journalCounts} />
           <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-            <div>{rangeDays} day overview</div>
+            <div>Per-day overview</div>
             <div>
-              {isClient ? counts.reduce((a, b) => a + b, 0) : 0} entries
+              {isClient ? journalCounts.reduce((a, b) => a + b, 0) : 0} entries
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -341,6 +368,10 @@ export default function AnalyticsPage() {
           <div className="text-xs text-slate-400 mt-1">
             Avg streak: {habitStats.avgStreak} • Top streak:{" "}
             {habitStats.topStreak}
+          </div>
+          <div className="mt-4">
+            <div className="text-xs text-slate-400 mb-2">Completed habits per day</div>
+            <SparkBars points={habitCompletedCounts} />
           </div>
         </div>
       </div>
