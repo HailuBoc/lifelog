@@ -7,6 +7,7 @@ const habitSchema = new mongoose.Schema({
 });
 
 const journalSchema = new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
   text: { type: String, required: true },
   date: { type: Date, default: Date.now },
 });
