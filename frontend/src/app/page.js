@@ -1024,7 +1024,7 @@ export default function HomePage() {
                       href="/habits"
                       className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors"
                     >
-                      View All Habits ({data.habits.length - 4} more)
+                      View All
                     </Link>
                   </div>
                 )}
