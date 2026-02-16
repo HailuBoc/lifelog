@@ -88,6 +88,8 @@ export default function HomePage() {
     }
   }, [coachMenuOpen, user]);
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
   // Fetch tasks count for sidebar
   useEffect(() => {
     if (!token) return;
@@ -105,7 +107,7 @@ export default function HomePage() {
     };
     
     fetchTaskCount();
-  }, [token]);
+  }, [token, API_URL]);
 
   // Auto-scroll coach messages
   useEffect(() => {
@@ -143,7 +145,7 @@ export default function HomePage() {
       
       fetchStats();
     }
-  }, [profileMenuOpen, user, token, data, journalsPagination.total]);
+  }, [profileMenuOpen, user, token, data, journalsPagination.total, API_URL]);
 
   const calculateStreak = (habits) => {
     const today = new Date();
@@ -167,8 +169,6 @@ export default function HomePage() {
     
     return streak;
   };
-
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   async function postCoachMessage(text) {
     if (!text.trim()) return;
@@ -290,7 +290,7 @@ export default function HomePage() {
     if (user && token) {
       fetchJournals(1, 10); // Fetch first page with default limit
     }
-  }, [user, token]);
+  }, [user, token, fetchJournals]);
 
   // Fetch user lifelog when user is resolved
   useEffect(() => {

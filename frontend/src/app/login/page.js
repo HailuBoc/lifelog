@@ -255,7 +255,7 @@ function LoginForm() {
       </button>
 
       <div className="mt-4 text-xs text-slate-400">
-        Don't have an account?{" "}
+        Don&apos;t have an account?{" "}
         <Link
           href="/signup"
           className="text-indigo-300 hover:text-indigo-400"
