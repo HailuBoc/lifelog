@@ -437,7 +437,7 @@ export default function HabitsPage() {
 
             {/* Completion Status Pie Chart */}
             <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700">
-              <h3 className="text-sm font-medium text-slate-300 mb-4">Today's Completion Status</h3>
+              <h3 className="text-sm font-medium text-slate-300 mb-4">Today&apos;s Completion Status</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <PieChart>
                   <Pie
